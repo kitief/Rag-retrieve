@@ -1,0 +1,211 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Default theme variables populated dynamically by src/theme.ts */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --surface: 217 33% 17%;
+    --card: 215 30% 22%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 30% 22%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 215 30% 22%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 215 30% 22%;
+    --accent-foreground: 210 40% 98%;
+
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 25% 27%;
+    --input: 217 33% 17%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* ── Glassmorphism utilities ──────────────────────────────────────────────── */
+@layer utilities {
+  .glass {
+    background-color: hsl(var(--surface) / 0.75);
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.4);
+  }
+
+  .glass-card {
+    background-color: hsl(var(--card) / 0.9);
+    backdrop-filter: blur(16px);
+    border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.15);
+  }
+
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary via-blue-500 to-primary;
+  }
+}
+
+/* ── Custom Scrollbar ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0);
+  }
+
+  50% {
+    box-shadow: 0 0 16px 4px hsl(var(--primary) / 0.35);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.animate-slide-in {
+  animation: slideInLeft 0.3s ease forwards;
+}
+
+.animate-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ── Gradient button ──────────────────────────────────────────────────────── */
+.btn-gradient {
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.85));
+  color: #ffffff;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+
+.btn-gradient:hover:not(:disabled) {
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.9), hsl(var(--primary) / 0.75));
+}
+
+.btn-gradient:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Markdown prose styles ────────────────────────────────────────────────── */
+.prose-invert h1,
+.prose-invert h2,
+.prose-invert h3 {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-invert p {
+  margin-bottom: 0.75rem;
+}
+
+.prose-invert ul,
+.prose-invert ol {
+  padding-left: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-invert li {
+  margin-bottom: 0.25rem;
+}
+
+.prose-invert code {
+  background: hsl(var(--accent));
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+}
+
+/* ── Smooth color transitions ─────────────────────────────────────────────── */
+* {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+/* ── Override browser autofill styles (prevent white background on email recommendations) ── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+textarea:-webkit-autofill:active {
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: hsl(var(--foreground)) !important;
+  transition: background-color 500000s ease-in-out 0s !important;
+  box-shadow: 0 0 0px 1000px hsl(var(--input)) inset !important;
+  border-color: hsl(var(--border) / 0.5) !important;
+}

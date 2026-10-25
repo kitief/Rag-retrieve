@@ -1,0 +1,506 @@
+/**
+ * Translation catalogue for the RagVault web client.
+ *
+ * `en` is the source of truth: every other language must provide exactly the
+ * same keys, which the type of `zh` enforces at build time (`tsc` runs before
+ * `vite build`), so a missing translation fails the build instead of silently
+ * falling back at runtime.
+ *
+ * Parameters are interpolated with `{name}` placeholders, for example
+ * `t('chat.deleteConfirm', { title })`.
+ */
+
+export const en = {
+  // ── App shell ─────────────────────────────────────────────────────────────
+  'app.title': 'RagVault',
+  'app.description': 'RagVault — your AI-powered study companion',
+
+  // ── Language switcher ─────────────────────────────────────────────────────
+  'language.label': 'Language',
+  'language.en': 'English',
+  'language.zh': '中文',
+  'language.switchTo': 'Switch language',
+
+  // ── Common actions ────────────────────────────────────────────────────────
+  'common.cancel': 'Cancel',
+  'common.save': 'Save',
+  'common.delete': 'Delete',
+  'common.retry': 'Retry',
+  'common.error': 'Error',
+  'common.document': 'Document',
+
+  // ── Login ─────────────────────────────────────────────────────────────────
+  'login.failedTitle': 'Login failed',
+  'login.failedDesc': 'Invalid email or password.',
+  'login.tagline': 'Your AI-powered study companion. Chat with your documents. Learn smarter.',
+  'login.feature1': 'Cloud LLM, local embeddings',
+  'login.feature2': 'PDF and PPTX support',
+  'login.feature3': 'AI quizzes & personalised study plans',
+  'login.welcomeBack': 'Welcome back',
+  'login.subtitle': 'Sign in to your knowledge space',
+  'login.email': 'Email',
+  'login.emailPlaceholder': 'you@example.com',
+  'login.password': 'Password',
+  'login.signingIn': 'Signing in…',
+  'login.signIn': 'Sign In',
+  'login.noAccount': "Don't have an account?",
+  'login.register': 'Register',
+
+  // ── Register ──────────────────────────────────────────────────────────────
+  'register.failedFallback': 'Registration failed.',
+  'register.brand': 'Start Learning',
+  'register.tagline': 'Create your free account and unlock AI-powered learning.',
+  'register.title': 'Create account',
+  'register.subtitle': 'Start your learning journey',
+  'register.name': 'Name',
+  'register.namePlaceholder': 'Your name',
+  'register.creating': 'Creating account…',
+  'register.create': 'Create Account',
+  'register.haveAccount': 'Already have an account?',
+  'register.signIn': 'Sign in',
+
+  // ── Chats landing page ────────────────────────────────────────────────────
+  'chats.defaultTitle': 'New Chat',
+  'chats.createInitialFailed': 'Failed to create initial chat.',
+  'chats.createFailed': 'Failed to create chat.',
+  'chats.opening': 'Opening Knowledge Space...',
+  'chats.welcomeTitle': 'Welcome to RagVault',
+  'chats.welcomeBody':
+    'Create your first knowledge space. Upload your study materials — PDFs, slides, lectures — and start chatting with your documents powered by AI.',
+  'chats.creating': 'Creating…',
+  'chats.create': 'Create Knowledge Space',
+  'chats.footerNote': 'Embeddings stay local · only retrieved snippets are sent to the LLM',
+
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  'sidebar.createFailed': 'Failed to create chat.',
+  'sidebar.renameFailed': 'Failed to rename chat.',
+  'sidebar.deleteConfirm':
+    'Permanently delete "{title}" and all its documents, study notes, and quizzes?',
+  'sidebar.deleted': 'Deleted "{title}".',
+  'sidebar.deleteFailed': 'Failed to delete chat.',
+  'sidebar.expand': 'Expand Sidebar',
+  'sidebar.collapse': 'Collapse Sidebar',
+  'sidebar.searchPlaceholder': 'Search chats...',
+  'sidebar.newChat': 'New Chat',
+  'sidebar.chatNamePlaceholder': 'Chat name',
+  'sidebar.saveName': 'Save chat name',
+  'sidebar.cancelRename': 'Cancel rename',
+  'sidebar.rename': 'Rename chat',
+  'sidebar.renameAria': 'Rename {title}',
+  'sidebar.deleteAria': 'Delete {title}',
+  'sidebar.noMatches': 'No matches',
+  'sidebar.noChats': 'No chats yet',
+  'sidebar.quizHistory': 'Quiz History',
+  'sidebar.darkMode': 'Dark Mode',
+  'sidebar.lightMode': 'Light Mode',
+  'sidebar.switchToDark': 'Switch to Dark Mode',
+  'sidebar.switchToLight': 'Switch to Light Mode',
+
+  // ── Chat detail header & toasts ───────────────────────────────────────────
+  'chat.renamed': 'Chat renamed successfully.',
+  'chat.renameFailed': 'Failed to rename chat.',
+  'chat.deleteConfirm':
+    'Permanently delete "{title}" and all its documents, notes, and quizzes?',
+  'chat.deleted': 'Deleted "{title}".',
+  'chat.deleteFailed': 'Failed to delete chat.',
+  'chat.answerUnavailable': 'Answer unavailable',
+  'chat.answerFailed': 'Failed to get answer.',
+  'chat.notesUnavailable': 'Notes unavailable',
+  'chat.notesHint': 'Make sure a ready PDF is uploaded in this chat.',
+  'chat.pdfFailed': 'PDF download failed',
+  'chat.pdfHint': 'Generate AI notes first, then try again.',
+  'chat.remedialUnavailable': 'Quiz Remedial Notes unavailable',
+  'chat.remedialHint':
+    'Take and submit a quiz first to generate remedial notes for wrong answers.',
+  'chat.remedialPdfFailed': 'Remedial PDF download failed',
+  'chat.remedialPdfHint': 'Generate Quiz Remedial notes first.',
+  'chat.quizUnavailable': 'Quiz unavailable',
+  'chat.quizFailed': 'Failed to submit quiz.',
+  'chat.clearConfirm': 'Are you sure? This will delete all AI knowledge from this chat.',
+  'chat.cleared': 'Knowledge cleared.',
+  'chat.clearFailed': 'Failed to clear knowledge.',
+
+  // ── Chat detail layout ────────────────────────────────────────────────────
+  'chat.documents': 'Documents',
+  'chat.fileCount': '{count} file',
+  'chat.fileCountPlural': '{count} files',
+  'chat.hideDocuments': 'Hide Documents',
+  'chat.clearKnowledge': 'Clear Knowledge',
+  'chat.showDocuments': 'Show Documents Panel',
+  'chat.docs': 'Docs ({count})',
+  'chat.chatNamePlaceholder': 'Chat name',
+  'chat.saveTitle': 'Save title',
+  'chat.cancel': 'Cancel',
+  'chat.knowledgeSpace': 'Knowledge Space',
+  'chat.rename': 'Rename chat',
+  'chat.delete': 'Delete chat',
+  'chat.tabChat': 'Chat',
+  'chat.tabNotes': 'AI Notes',
+  'chat.tabQuiz': 'Quiz',
+
+  // ── Chat detail: notes & quiz panels ──────────────────────────────────────
+  'chat.noNotesTitle': 'No Full Document AI Notes Generated Yet',
+  'chat.noNotesBody':
+    'Synthesize key concepts, definitions, formulas, and takeaways into high-yield study cards from your documents.',
+  'chat.generateNotes': 'Generate Full Document Notes',
+  'chat.noRemedialTitle': 'No Quiz Remedial Notes Generated Yet',
+  'chat.noRemedialBody':
+    'Take a quiz and answer questions to generate targeted study cards and a downloadable PDF focusing specifically on your missed questions.',
+  'chat.generateRemedial': 'Generate Quiz Remedial Notes',
+  'chat.emptyHint1': 'Upload documents, then ask questions.',
+  'chat.emptyHint2': 'Answers will cite the source and page.',
+  'chat.processingDisabled':
+    'Your document is still being processed. Chat will be available when it is ready.',
+  'chat.remedialSection': 'Quiz Remedial Notes',
+  'chat.remedialCardTitle': 'Quiz Wrong Answers Notes & PDF',
+  'chat.remedialCardBody':
+    'Generates targeted study cards & downloadable PDF for questions missed in your quizzes.',
+  'chat.analyzing': 'Analyzing Mistakes...',
+  'chat.viewRemedial': 'View Remedial Cards & PDF',
+  'chat.generateWrongNotes': 'Generate Wrong Answers Notes',
+  'chat.startQuiz': 'Start a Quiz',
+  'chat.startQuizBody': 'Generate a 20-question multiple-choice quiz.',
+  'chat.reset': 'Reset',
+  'chat.autoQuiz': 'Auto Quiz (All Docs)',
+  'chat.autoQuizBody': 'Builds a general 20-question MCQ quiz covering all documents.',
+  'chat.generating20': 'Generating 20 Questions…',
+  'chat.generateAuto': 'Generate Auto Quiz',
+  'chat.topicQuiz': 'Topic Quiz',
+  'chat.topicQuizBody': 'Focuses specifically on a chosen subject or chapter with 20 MCQs.',
+  'chat.topicPlaceholder': 'e.g. Neural networks',
+  'chat.generateTopic': 'Generate Topic Quiz',
+  'chat.cancelOrShowAll': 'Cancel / Show All Options',
+  'chat.exitQuiz': '← Exit Quiz',
+  'chat.resumeQuiz': 'Resume quiz',
+  'chat.showQuizNotes': 'Show quiz and notes',
+
+  // ── Chat input ────────────────────────────────────────────────────────────
+  'input.stopGenerating': 'Stop Generating',
+  'input.placeholder': 'Ask a question about your documents… (Enter to send, Shift+Enter for new line)',
+  'input.stopTitle': 'Stop generating',
+  'input.stop': 'Stop',
+  'input.hint': 'Enter to send · Shift+Enter for new line · Answers grounded in your documents',
+
+  // ── Messages ──────────────────────────────────────────────────────────────
+  'message.yesterday': 'Yesterday, {time}',
+  'message.sourceOne': '{count} source',
+  'message.sourceMany': '{count} sources',
+  'message.copy': 'Copy message',
+  'message.copied': 'Copied',
+
+  // ── Documents list ────────────────────────────────────────────────────────
+  'doc.processing': 'Processing',
+  'doc.ready': 'Ready',
+  'doc.failed': 'Failed',
+  'doc.loading': 'Loading…',
+  'doc.empty': 'No documents yet',
+  'doc.emptyHint': 'Upload files below to get started',
+  'doc.removed': '"{name}" removed.',
+  'doc.deleteFailed': 'Failed to delete document.',
+  'doc.chunks': '{count} chunks',
+  'doc.video': 'Video',
+  'doc.audio': 'Audio',
+
+  // ── Upload ────────────────────────────────────────────────────────────────
+  'upload.unsupported': 'Unsupported file type',
+  'upload.unsupportedDesc': '{names} — please upload PDF or PPTX/PPT files.',
+  'upload.uploading': 'Uploading',
+  'upload.processing': '"{name}" is being processed…',
+  'upload.failed': 'Upload failed',
+  'upload.failedDesc': 'Failed to upload {name}.',
+  'upload.drop': 'Drop to upload',
+  'upload.drag': 'Drag & drop files',
+  'upload.browse': 'or click to browse',
+
+  // ── Notes view ────────────────────────────────────────────────────────────
+  'notes.copied': 'Note card copied to clipboard.',
+  'notes.copyTemplate':
+    '📌 {topic}\n\n{summary}\n\nKey Points:\n{points}\n\n[Source: {source}, Page {page}]',
+  'notes.pdfReadyTitle': '{title} - PDF-ready summary',
+  'notes.cardCount': '{count} cards',
+  'notes.description':
+    'Complete page-by-page summary from every uploaded document. Download the searchable PDF for exam revision.',
+  'notes.preparing': 'Preparing PDF...',
+  'notes.download': 'Download Study PDF',
+  'notes.generating': 'Generating...',
+  'notes.regenerate': 'Regenerate',
+  'notes.pageSummaries': 'Page Summaries ({count})',
+  'notes.searchPlaceholder': 'Search note cards...',
+  'notes.noMatch': 'No note cards match your search query.',
+  'notes.copyCard': 'Copy card',
+  'notes.page': 'Page {page}',
+
+  // ── Notes generating graphic ──────────────────────────────────────────────
+  'notesGen.reading': 'Reading pages',
+  'notesGen.building': 'Building PDF',
+  'notesGen.title': 'Generating AI Study Notes',
+  'notesGen.body':
+    'Creating a complete page-by-page study summary with formulas and important details. This usually takes a minute or two depending on the model.',
+  'notesGen.footer': 'Generating exam-ready notes...',
+
+  // ── Quiz ──────────────────────────────────────────────────────────────────
+  'quiz.questionOf': 'Question {current} of {total}',
+  'quiz.submit': 'Submit Quiz',
+  'quiz.submitting': 'Submitting…',
+  'quiz.next': 'Next',
+  'quiz.correctCount': '{correct}/{total} correct',
+  'quiz.needsReview': 'Needs review:',
+  'quiz.incorrectTitle': 'Incorrect Questions ({count})',
+  'quiz.yourAnswer': 'Your Answer: ',
+  'quiz.correctAnswer': 'Correct Answer: ',
+  'quiz.paragraph': 'Paragraph Explanation:',
+  'quiz.generatingRemedial': 'Generating Remedial Notes...',
+  'quiz.generateRemedial': 'Generate Wrong Answers Notes & PDF',
+  'quiz.tryAnother': 'Try Another Quiz',
+
+  // ── Quiz history page ─────────────────────────────────────────────────────
+  'quizHistory.title': 'Quiz History',
+  'quizHistory.subtitle': 'Review past quizzes and track progress across all knowledge spaces.',
+  'quizHistory.empty': 'No knowledge spaces found.',
+  'quizHistory.summary': '{count} questions · {time}',
+} as const
+
+export type MessageKey = keyof typeof en
+
+export const zh: Record<MessageKey, string> = {
+  // ── App shell ─────────────────────────────────────────────────────────────
+  'app.title': 'RagVault',
+  'app.description': 'RagVault — 你的 AI 学习伙伴',
+
+  // ── Language switcher ─────────────────────────────────────────────────────
+  'language.label': '语言',
+  'language.en': 'English',
+  'language.zh': '中文',
+  'language.switchTo': '切换语言',
+
+  // ── Common actions ────────────────────────────────────────────────────────
+  'common.cancel': '取消',
+  'common.save': '保存',
+  'common.delete': '删除',
+  'common.retry': '重试',
+  'common.error': '出错了',
+  'common.document': '文档',
+
+  // ── Login ─────────────────────────────────────────────────────────────────
+  'login.failedTitle': '登录失败',
+  'login.failedDesc': '邮箱或密码不正确。',
+  'login.tagline': '你的 AI 学习伙伴。与文档对话，更高效地学习。',
+  'login.feature1': '云端大模型 + 本地向量化',
+  'login.feature2': '支持 PDF 与 PPTX',
+  'login.feature3': 'AI 测验与个性化学习计划',
+  'login.welcomeBack': '欢迎回来',
+  'login.subtitle': '登录你的知识空间',
+  'login.email': '邮箱',
+  'login.emailPlaceholder': 'you@example.com',
+  'login.password': '密码',
+  'login.signingIn': '登录中…',
+  'login.signIn': '登录',
+  'login.noAccount': '还没有账号？',
+  'login.register': '注册',
+
+  // ── Register ──────────────────────────────────────────────────────────────
+  'register.failedFallback': '注册失败。',
+  'register.brand': '开始学习',
+  'register.tagline': '创建免费账号，开启 AI 辅助学习。',
+  'register.title': '创建账号',
+  'register.subtitle': '开始你的学习之旅',
+  'register.name': '昵称',
+  'register.namePlaceholder': '你的昵称',
+  'register.creating': '创建中…',
+  'register.create': '创建账号',
+  'register.haveAccount': '已有账号？',
+  'register.signIn': '登录',
+
+  // ── Chats landing page ────────────────────────────────────────────────────
+  'chats.defaultTitle': '新建对话',
+  'chats.createInitialFailed': '创建初始对话失败。',
+  'chats.createFailed': '创建对话失败。',
+  'chats.opening': '正在打开知识空间…',
+  'chats.welcomeTitle': '欢迎使用 RagVault',
+  'chats.welcomeBody':
+    '创建你的第一个知识空间。上传学习资料（PDF、幻灯片、讲义），即可开始与文档对话。',
+  'chats.creating': '创建中…',
+  'chats.create': '创建知识空间',
+  'chats.footerNote': '向量化在本地完成 · 仅检索片段会发送给大模型',
+
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  'sidebar.createFailed': '创建对话失败。',
+  'sidebar.renameFailed': '重命名对话失败。',
+  'sidebar.deleteConfirm': '确定永久删除「{title}」及其全部文档、笔记和测验吗？',
+  'sidebar.deleted': '已删除「{title}」。',
+  'sidebar.deleteFailed': '删除对话失败。',
+  'sidebar.expand': '展开侧边栏',
+  'sidebar.collapse': '收起侧边栏',
+  'sidebar.searchPlaceholder': '搜索对话…',
+  'sidebar.newChat': '新建对话',
+  'sidebar.chatNamePlaceholder': '对话名称',
+  'sidebar.saveName': '保存对话名称',
+  'sidebar.cancelRename': '取消重命名',
+  'sidebar.rename': '重命名对话',
+  'sidebar.renameAria': '重命名 {title}',
+  'sidebar.deleteAria': '删除 {title}',
+  'sidebar.noMatches': '没有匹配结果',
+  'sidebar.noChats': '还没有对话',
+  'sidebar.quizHistory': '测验记录',
+  'sidebar.darkMode': '深色模式',
+  'sidebar.lightMode': '浅色模式',
+  'sidebar.switchToDark': '切换到深色模式',
+  'sidebar.switchToLight': '切换到浅色模式',
+
+  // ── Chat detail header & toasts ───────────────────────────────────────────
+  'chat.renamed': '对话已重命名。',
+  'chat.renameFailed': '重命名对话失败。',
+  'chat.deleteConfirm': '确定永久删除「{title}」及其全部文档、笔记和测验吗？',
+  'chat.deleted': '已删除「{title}」。',
+  'chat.deleteFailed': '删除对话失败。',
+  'chat.answerUnavailable': '暂时无法回答',
+  'chat.answerFailed': '获取回答失败。',
+  'chat.notesUnavailable': '暂时无法生成笔记',
+  'chat.notesHint': '请确认该对话中已有解析完成的 PDF。',
+  'chat.pdfFailed': 'PDF 下载失败',
+  'chat.pdfHint': '请先生成 AI 笔记，然后再试。',
+  'chat.remedialUnavailable': '暂时无法生成错题笔记',
+  'chat.remedialHint': '请先完成并提交一次测验，才能生成错题笔记。',
+  'chat.remedialPdfFailed': '错题 PDF 下载失败',
+  'chat.remedialPdfHint': '请先生成错题笔记。',
+  'chat.quizUnavailable': '暂时无法生成测验',
+  'chat.quizFailed': '提交测验失败。',
+  'chat.clearConfirm': '确定要清空吗？该操作会删除此对话中全部 AI 知识库数据。',
+  'chat.cleared': '知识库已清空。',
+  'chat.clearFailed': '清空知识库失败。',
+
+  // ── Chat detail layout ────────────────────────────────────────────────────
+  'chat.documents': '文档',
+  'chat.fileCount': '{count} 个文件',
+  'chat.fileCountPlural': '{count} 个文件',
+  'chat.hideDocuments': '隐藏文档',
+  'chat.clearKnowledge': '清空知识库',
+  'chat.showDocuments': '显示文档面板',
+  'chat.docs': '文档（{count}）',
+  'chat.chatNamePlaceholder': '对话名称',
+  'chat.saveTitle': '保存标题',
+  'chat.cancel': '取消',
+  'chat.knowledgeSpace': '知识空间',
+  'chat.rename': '重命名对话',
+  'chat.delete': '删除对话',
+  'chat.tabChat': '对话',
+  'chat.tabNotes': 'AI 笔记',
+  'chat.tabQuiz': '测验',
+
+  // ── Chat detail: notes & quiz panels ──────────────────────────────────────
+  'chat.noNotesTitle': '尚未生成整篇文档的 AI 笔记',
+  'chat.noNotesBody': '把文档中的核心概念、定义、公式与要点整理成高效的复习卡片。',
+  'chat.generateNotes': '生成整篇文档笔记',
+  'chat.noRemedialTitle': '尚未生成测验错题笔记',
+  'chat.noRemedialBody':
+    '先做一次测验，即可针对答错的题目生成专项复习卡片与可下载的 PDF。',
+  'chat.generateRemedial': '生成错题笔记',
+  'chat.emptyHint1': '上传文档后即可提问。',
+  'chat.emptyHint2': '回答会标注来源与页码。',
+  'chat.processingDisabled': '文档仍在解析中，解析完成后即可开始对话。',
+  'chat.remedialSection': '测验错题笔记',
+  'chat.remedialCardTitle': '测验错题笔记与 PDF',
+  'chat.remedialCardBody': '针对测验中答错的题目生成专项复习卡片与可下载 PDF。',
+  'chat.analyzing': '正在分析错题…',
+  'chat.viewRemedial': '查看错题卡片与 PDF',
+  'chat.generateWrongNotes': '生成错题笔记',
+  'chat.startQuiz': '开始测验',
+  'chat.startQuizBody': '生成一份 20 道单选题的测验。',
+  'chat.reset': '重置',
+  'chat.autoQuiz': '自动测验（全部文档）',
+  'chat.autoQuizBody': '基于全部文档生成一份 20 道单选题的综合测验。',
+  'chat.generating20': '正在生成 20 道题…',
+  'chat.generateAuto': '生成自动测验',
+  'chat.topicQuiz': '主题测验',
+  'chat.topicQuizBody': '针对指定主题或章节生成 20 道单选题。',
+  'chat.topicPlaceholder': '例如：神经网络',
+  'chat.generateTopic': '生成主题测验',
+  'chat.cancelOrShowAll': '取消 / 显示全部选项',
+  'chat.exitQuiz': '← 退出测验',
+  'chat.resumeQuiz': '继续测验',
+  'chat.showQuizNotes': '显示测验与笔记',
+
+  // ── Chat input ────────────────────────────────────────────────────────────
+  'input.stopGenerating': '停止生成',
+  'input.placeholder': '就你的文档提问…（Enter 发送，Shift+Enter 换行）',
+  'input.stopTitle': '停止生成',
+  'input.stop': '停止',
+  'input.hint': 'Enter 发送 · Shift+Enter 换行 · 回答严格基于你的文档',
+
+  // ── Messages ──────────────────────────────────────────────────────────────
+  'message.yesterday': '昨天 {time}',
+  'message.sourceOne': '{count} 个来源',
+  'message.sourceMany': '{count} 个来源',
+  'message.copy': '复制消息',
+  'message.copied': '已复制',
+
+  // ── Documents list ────────────────────────────────────────────────────────
+  'doc.processing': '解析中',
+  'doc.ready': '已就绪',
+  'doc.failed': '解析失败',
+  'doc.loading': '加载中…',
+  'doc.empty': '还没有文档',
+  'doc.emptyHint': '在下方上传文件即可开始',
+  'doc.removed': '已移除「{name}」。',
+  'doc.deleteFailed': '删除文档失败。',
+  'doc.chunks': '{count} 个片段',
+  'doc.video': '视频',
+  'doc.audio': '音频',
+
+  // ── Upload ────────────────────────────────────────────────────────────────
+  'upload.unsupported': '不支持的文件类型',
+  'upload.unsupportedDesc': '{names} — 请上传 PDF 或 PPTX/PPT 文件。',
+  'upload.uploading': '上传中',
+  'upload.processing': '「{name}」正在解析…',
+  'upload.failed': '上传失败',
+  'upload.failedDesc': '上传 {name} 失败。',
+  'upload.drop': '松开即可上传',
+  'upload.drag': '拖拽文件到此处',
+  'upload.browse': '或点击选择文件',
+
+  // ── Notes view ────────────────────────────────────────────────────────────
+  'notes.copied': '笔记卡片已复制到剪贴板。',
+  'notes.copyTemplate': '📌 {topic}\n\n{summary}\n\n要点：\n{points}\n\n[来源：{source}，第 {page} 页]',
+  'notes.pdfReadyTitle': '{title} - 可导出 PDF 的摘要',
+  'notes.cardCount': '{count} 张卡片',
+  'notes.description': '逐页汇总每份文档的完整内容，可下载可检索的 PDF 用于考前复习。',
+  'notes.preparing': '正在生成 PDF…',
+  'notes.download': '下载学习 PDF',
+  'notes.generating': '生成中…',
+  'notes.regenerate': '重新生成',
+  'notes.pageSummaries': '逐页摘要（{count}）',
+  'notes.searchPlaceholder': '搜索笔记卡片…',
+  'notes.noMatch': '没有匹配的笔记卡片。',
+  'notes.copyCard': '复制卡片',
+  'notes.page': '第 {page} 页',
+
+  // ── Notes generating graphic ──────────────────────────────────────────────
+  'notesGen.reading': '读取页面',
+  'notesGen.building': '生成 PDF',
+  'notesGen.title': '正在生成 AI 学习笔记',
+  'notesGen.body': '正在生成逐页的完整复习摘要，包含公式与重要细节。通常需要一两分钟，取决于模型速度。',
+  'notesGen.footer': '正在生成备考笔记…',
+
+  // ── Quiz ──────────────────────────────────────────────────────────────────
+  'quiz.questionOf': '第 {current} 题，共 {total} 题',
+  'quiz.submit': '提交测验',
+  'quiz.submitting': '提交中…',
+  'quiz.next': '下一题',
+  'quiz.correctCount': '答对 {correct}/{total} 题',
+  'quiz.needsReview': '需要复习：',
+  'quiz.incorrectTitle': '答错的题目（{count}）',
+  'quiz.yourAnswer': '你的答案：',
+  'quiz.correctAnswer': '正确答案：',
+  'quiz.paragraph': '详细解析：',
+  'quiz.generatingRemedial': '正在生成错题笔记…',
+  'quiz.generateRemedial': '生成错题笔记与 PDF',
+  'quiz.tryAnother': '再测一次',
+
+  // ── Quiz history page ─────────────────────────────────────────────────────
+  'quizHistory.title': '测验记录',
+  'quizHistory.subtitle': '回顾历史测验，查看各个知识空间的进度。',
+  'quizHistory.empty': '还没有知识空间。',
+  'quizHistory.summary': '{count} 道题 · {time}',
+}
+
+export const messages = { en, zh }

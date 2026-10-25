@@ -1,0 +1,4 @@
+# Shell scripts are executed inside Linux containers: they must keep LF endings
+# even when the repository is checked out on Windows (core.autocrlf would
+# otherwise turn them into CRLF and break the backend entrypoint).
+*.sh text eol=lf
