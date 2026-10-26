@@ -2,7 +2,7 @@
 
 > Self-Hosted · RAG-Powered AI Learning System · Cloud LLM + Local Embeddings
 >
-> **Release `alpha-v1.1`** · Repository: <https://github.com/kitief/Rag-retrieve>
+> **Release `alpha-v1.2`** · Repository: <https://github.com/kitief/Rag-retrieve>
 
 A self-hosted Retrieval-Augmented Generation (RAG) learning platform for students. Upload PDF and PPTX files to create "knowledge spaces," then ask questions, generate quizzes, create AI study notes, track weak topics, and get personalized study recommendations.
 
@@ -487,10 +487,10 @@ because the client refuses to send unauthenticated requests.
 
 MIT License. See [LICENSE](LICENSE) for details.
 
-This release (`alpha-v1.1`) is derived from the original
+This release (`alpha-v1.2`) is derived from the original
 [RagVault](https://github.com/Meet-paladiya/RagVault) project by Meet Paladiya.
 The upstream history is intentionally not carried over; this repository starts
-from a single `alpha-v1.1` commit.
+from a single `alpha-v1.1` commit and adds the settings dialog in `alpha-v1.2`.
 
 ---
 

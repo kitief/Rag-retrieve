@@ -20,6 +20,9 @@ from app.routers.quiz import router as quiz_router
 from app.routers.notes import router as notes_router
 from app.routers.settings import router as settings_router
 
+# Reported by /health and /config, and shown in the OpenAPI schema.
+API_VERSION = "1.2.0"
+
 class EndpointFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         return record.getMessage().find("/health") == -1
@@ -92,7 +95,7 @@ app = FastAPI(
         "Upload PDF and PPTX files, then chat with your documents. "
         "Answer generation is served by a cloud LLM over an OpenAI-compatible API."
     ),
-    version="1.0.0",
+    version=API_VERSION,
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -172,7 +175,7 @@ app.include_router(settings_router)
 @app.get("/health", tags=["Health"])
 async def health() -> dict:
     """Health check endpoint used by Docker Compose healthcheck."""
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", "version": API_VERSION}
 
 
 @app.get("/config", tags=["Health"])
@@ -189,5 +192,5 @@ async def client_config() -> dict:
         "active_language": i18n.current_language(),
         "audio_video_enabled": get_settings().enable_audio_video_uploads,
         "ocr_enabled": get_settings().enable_ocr_uploads,
-        "version": "1.0.0",
+        "version": API_VERSION,
     }
