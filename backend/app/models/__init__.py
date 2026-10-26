@@ -5,5 +5,17 @@ from app.models.document import Document
 from app.models.quiz import Quiz
 from app.models.memory import UserMemory
 from app.models.note import Note
+from app.models.app_setting import AppSetting
+from app.models.llm_api_key import LLMApiKey
 
-__all__ = ["User", "Chat", "Message", "Document", "Quiz", "UserMemory", "Note"]
+__all__ = [
+    "User",
+    "Chat",
+    "Message",
+    "Document",
+    "Quiz",
+    "UserMemory",
+    "Note",
+    "AppSetting",
+    "LLMApiKey",
+]

@@ -13,6 +13,7 @@ The active language comes from, in order of precedence:
 
 * the ``X-App-Language`` request header (the SPA sends whatever the user
   picked in the UI),
+* a value saved from the settings dialog (``app_settings`` table),
 * the ``APP_LANGUAGE`` environment variable (the Docker-level default),
 * :data:`DEFAULT_LANGUAGE`.
 
@@ -27,6 +28,7 @@ import contextvars
 from typing import Final
 
 from app.config import get_settings
+from app.core.runtime_settings import get_override
 
 SUPPORTED_LANGUAGES: Final[tuple[str, str]] = ("en", "zh")
 DEFAULT_LANGUAGE: Final[str] = "en"
@@ -70,7 +72,17 @@ def normalize_language(value: str | None) -> str | None:
 
 
 def configured_language() -> str:
-    """Language from the environment (``APP_LANGUAGE``), used as the default."""
+    """
+    Deployment default language.
+
+    A value saved from the settings dialog wins over ``APP_LANGUAGE`` so the
+    language can be changed without restarting the containers.
+    """
+    override = get_override("app_language")
+    if override:
+        normalized_override = normalize_language(override)
+        if normalized_override:
+            return normalized_override
     raw = getattr(get_settings(), "app_language", None)
     return normalize_language(raw) or DEFAULT_LANGUAGE
 
@@ -362,6 +374,35 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
             "🎉 **表现很棒！** 你在 **{title}** 的测验中全部答对了。\n\n"
             "继续保持！可以再测一次，或上传更多资料来挑战自己。"
         ),
+    },
+    # ── Settings dialog ──────────────────────────────────────────────────────
+    "settings.unsupported_language": {
+        "en": "Unsupported language. Available languages: {languages}.",
+        "zh": "不支持该语言。可选语言：{languages}。",
+    },
+    "settings.unknown_provider": {
+        "en": "Unknown LLM provider. Available providers: {providers}.",
+        "zh": "未知的大模型服务商。可选：{providers}。",
+    },
+    "settings.invalid_base_url": {
+        "en": "The API base URL must start with http:// or https://.",
+        "zh": "API 地址必须以 http:// 或 https:// 开头。",
+    },
+    "settings.test_ok": {
+        "en": "Connection successful — the model answered the test prompt.",
+        "zh": "连接成功——模型已正常应答测试请求。",
+    },
+    "settings.test_failed": {
+        "en": "Could not reach the model. Check the base URL ({base_url}), the model name ({model}) and the API key.",
+        "zh": "无法连接模型。请检查地址（{base_url}）、模型名（{model}）与 API Key。",
+    },
+    "settings.api_key_required": {
+        "en": "The API key cannot be empty.",
+        "zh": "API Key 不能为空。",
+    },
+    "settings.api_key_not_found": {
+        "en": "That saved API key no longer exists.",
+        "zh": "该 API Key 不存在。",
     },
     # ── Generated titles ─────────────────────────────────────────────────────
     "title.new_chat": {

@@ -1,18 +1,25 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Brain, MessageSquare, Plus, Search, LogOut, ChevronLeft, History, Sun, Moon, Trash2, Pencil, Check, X
+  Brain, MessageSquare, Plus, Search, LogOut, ChevronLeft, History, Sun, Moon, Trash2, Pencil, Check, X, Settings
 } from 'lucide-react'
 import { useChats, useCreateChat, useDeleteChat, useUpdateChat } from '@/api/chats'
 import { useAuthStore } from '@/store/authStore'
 import { useThemeStore } from '@/store/themeStore'
 import { useT, useDateLocale } from '@/i18n/useT'
-import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
+import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
@@ -36,6 +43,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const updateChat = useUpdateChat()
@@ -105,6 +113,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     clearAuth()
     navigate('/login')
   }
+
+  // Ctrl+, opens the settings dialog, matching the shortcut shown in the menu.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === ',') {
+        event.preventDefault()
+        setSettingsOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <motion.div
@@ -289,8 +309,9 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               size="sm"
               className="w-full justify-start text-xs h-8 text-muted-foreground hover:text-foreground"
               onClick={toggleTheme}
+              title={theme === 'dark' ? t('sidebar.switchToLight') : t('sidebar.switchToDark')}
             >
-              {theme === 'light' ? (
+              {theme === 'dark' ? (
                 <>
                   <Moon className="w-3.5 h-3.5 mr-2 text-blue-500" /> {t('sidebar.darkMode')}
                 </>
@@ -300,8 +321,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 </>
               )}
             </Button>
-
-            <LanguageSwitcher />
           </div>
         ) : (
           <div className="border-t border-white/10 p-2 flex flex-col items-center gap-1">
@@ -315,34 +334,60 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               size="icon"
               className="w-8 h-8 text-muted-foreground hover:text-foreground"
               onClick={toggleTheme}
-              title={theme === 'light' ? t('sidebar.switchToDark') : t('sidebar.switchToLight')}
+              title={theme === 'dark' ? t('sidebar.switchToLight') : t('sidebar.switchToDark')}
             >
-              {theme === 'light' ? <Moon className="w-4 h-4 text-blue-500" /> : <Sun className="w-4 h-4 text-amber-400" />}
+              {theme === 'dark' ? <Moon className="w-4 h-4 text-blue-500" /> : <Sun className="w-4 h-4 text-amber-400" />}
             </Button>
-            <LanguageSwitcher collapsed />
           </div>
         )}
 
-        {/* User Row */}
-        <div className={`border-t border-white/10 p-3 flex items-center gap-2 ${collapsed ? 'justify-center' : ''}`}>
-          <Avatar className="w-7 h-7 flex-shrink-0">
-            <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
-              {user?.name?.charAt(0).toUpperCase() ?? 'U'}
-            </AvatarFallback>
-          </Avatar>
-          {!collapsed && (
-            <>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{user?.name}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
-              </div>
-              <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={handleLogout}>
-                <LogOut className="w-3.5 h-3.5" />
-              </Button>
-            </>
-          )}
+        {/* User Row — click opens the account menu (Settings / Sign out) */}
+        <div className="border-t border-white/10 p-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                data-testid="account-menu-trigger"
+                aria-label={t('settings.open')}
+                className={`flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 ${
+                  collapsed ? 'justify-center' : ''
+                }`}
+              >
+                <Avatar className="w-7 h-7 flex-shrink-0">
+                  <AvatarFallback className="bg-primary/20 text-primary text-xs font-semibold">
+                    {user?.name?.charAt(0).toUpperCase() ?? 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                {!collapsed && (
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{user?.name}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{user?.email}</p>
+                  </div>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align={collapsed ? 'center' : 'start'} className="min-w-[13rem]">
+              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                <Settings className="mr-2 h-3.5 w-3.5" />
+                <span className="flex-1">{t('settings.open')}</span>
+                <span className="ml-3 text-[10px] tracking-wide text-muted-foreground">
+                  {t('settings.shortcut')}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={handleLogout}
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              >
+                <LogOut className="mr-2 h-3.5 w-3.5" />
+                {t('settings.logout')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </motion.div>
   )
 }

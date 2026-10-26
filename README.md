@@ -312,6 +312,40 @@ Backend runs on `http://localhost:8000`, frontend on `http://localhost:3000` (wi
 
 ---
 
+## ⚙️ In-App Settings
+
+Click your avatar at the bottom of the sidebar (or press `Ctrl+,`) to open the
+settings dialog. It has two groups:
+
+| Group | What it does |
+| --- | --- |
+| **Language** | Switches the interface, validation messages and AI answers between English and 中文 for the current browser. `Use as deployment default` also stores the choice as the default for new visitors. |
+| **API** | Picks a provider from a dropdown (DeepSeek / OpenAI / any OpenAI-compatible endpoint), then sets the API key, base URL and model. The model field is a dropdown populated from the endpoint's `GET /v1/models`, with a manual-entry escape hatch. `Test connection` probes the endpoint without saving. |
+
+### Saved API keys
+
+The **API** panel keeps a small key vault (`llm_api_keys` table) so several
+credentials can coexist and be swapped without retyping them:
+
+| Action | Effect |
+| --- | --- |
+| Type a key + label → **Save key** | Stores the key and activates it immediately |
+| **Saved keys** dropdown | Switches the active credential; the choice applies to the very next request |
+| Trash icon | Deletes the currently active key |
+
+Exactly one key is active at a time — it is mirrored into `app_settings.llm_api_key`
+so the request path stays a single dict lookup. Keys are write-only over the API:
+responses only ever contain a masked hint such as `sk-…1a2b`.
+
+Values are stored in the `app_settings` table, so they **survive restarts and
+override the matching `.env` entries** — no image rebuild is needed. Only the
+retrieved document snippets are sent to the provider; embeddings stay local.
+
+`Restore defaults` in the dialog footer deletes every stored override so the
+`.env` configuration applies again.
+
+---
+
 ## 🧪 Running Tests
 
 The test suite is not part of the runtime image, so install the extra

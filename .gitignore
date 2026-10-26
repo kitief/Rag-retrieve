@@ -42,5 +42,6 @@ logs/
 # Docker
 *.env.docker
 
-models/
+# Local GGUF weights (root-level only — `backend/app/models/` holds ORM models)
+/models/
 *.gguf

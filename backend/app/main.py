@@ -18,6 +18,7 @@ from app.routers.documents import router as documents_router
 from app.routers.messages import router as messages_router
 from app.routers.quiz import router as quiz_router
 from app.routers.notes import router as notes_router
+from app.routers.settings import router as settings_router
 
 class EndpointFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
@@ -43,6 +44,19 @@ async def lifespan(app: FastAPI):
     # Create database tables
     await create_tables()
     logger.info("Database tables initialized successfully.")
+
+    # Load the overrides saved from the settings dialog so the very first
+    # request already sees them (they win over the .env values).
+    from app.core import runtime_settings
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        stored_settings = await runtime_settings.load_from_db(session)
+    if stored_settings:
+        logger.info(
+            "Runtime overrides loaded from the settings dialog: %s",
+            ", ".join(sorted(stored_settings)),
+        )
 
     # Create temp upload directory
     os.makedirs(cfg.upload_temp_dir, exist_ok=True)
@@ -150,6 +164,7 @@ app.include_router(documents_router)
 app.include_router(messages_router)
 app.include_router(quiz_router)
 app.include_router(notes_router)
+app.include_router(settings_router)
 
 
 # ─── Health Check ─────────────────────────────────────────────────────────────

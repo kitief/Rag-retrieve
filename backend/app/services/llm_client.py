@@ -23,6 +23,7 @@ from typing import Any, AsyncGenerator, Mapping, Sequence
 import httpx
 
 from app.core.i18n import t
+from app.core.runtime_settings import get_override
 
 logger = logging.getLogger(__name__)
 
@@ -100,14 +101,18 @@ def resolve_llm_config() -> ResolvedLLMConfig:
     """
     Build the effective LLM configuration from settings + provider preset.
 
-    Precedence: explicit ``LLM_BASE_URL`` / ``LLM_MODEL`` values in the
-    environment win over the provider preset, which in turn is only a default.
+    Precedence: a value saved from the settings dialog (``app_settings`` table)
+    wins over the same ``LLM_*`` environment variable, which in turn wins over
+    the provider preset.
     """
     from app.config import get_settings
 
     cfg = get_settings()
 
-    provider = (cfg.llm_provider or DEFAULT_PROVIDER).strip().lower()
+    def pick(key: str, env_value: str) -> str:
+        return (get_override(key) or env_value or "").strip()
+
+    provider = pick("llm_provider", cfg.llm_provider or DEFAULT_PROVIDER).lower()
     preset = PROVIDER_PRESETS.get(provider)
 
     if preset is None:
@@ -119,10 +124,10 @@ def resolve_llm_config() -> ResolvedLLMConfig:
         preset = PROVIDER_PRESETS["custom"]
         provider = "custom"
 
-    base_url = (cfg.llm_base_url or "").strip() or preset.base_url
-    model = (cfg.llm_model or "").strip() or preset.model
+    base_url = pick("llm_base_url", cfg.llm_base_url) or preset.base_url
+    model = pick("llm_model", cfg.llm_model) or preset.model
 
-    api_key = (cfg.llm_api_key or "").strip()
+    api_key = pick("llm_api_key", cfg.llm_api_key)
 
     return ResolvedLLMConfig(
         provider=provider,
@@ -412,6 +417,55 @@ async def check_llm_availability() -> bool:
 
     logger.info("[LLM] Provider reachable (probe reply: %r).", reply.strip()[:60])
     return True
+
+
+async def list_models(timeout: float = 20.0) -> list[str]:
+    """
+    Ask the configured endpoint which models it serves (``GET /models``).
+
+    Every OpenAI-compatible provider exposes this endpoint, so the settings
+    dialog can offer a dropdown instead of asking the user to type a model name
+    from memory. Returns an empty list when the provider does not support it —
+    the caller then falls back to free-text entry.
+    """
+    resolved = resolve_llm_config()
+    if not resolved.base_url:
+        raise LLMConfigurationError(
+            "LLM endpoint is not configured. Set LLM_BASE_URL (or pick a known "
+            "LLM_PROVIDER such as 'deepseek')."
+        )
+
+    url = f"{resolved.base_url.rstrip('/')}/models"
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(url, headers=_headers(resolved))
+    except httpx.HTTPError as exc:
+        raise LLMRequestError(f"Could not reach the model list at {url}: {exc}") from exc
+
+    if response.status_code != 200:
+        raise LLMRequestError(
+            f"The endpoint returned HTTP {response.status_code} for {url}: "
+            f"{_extract_error_detail(response)}"
+        )
+
+    try:
+        payload = response.json()
+    except Exception as exc:
+        raise LLMRequestError(f"Model list is not valid JSON: {exc}") from exc
+
+    entries = payload.get("data") if isinstance(payload, Mapping) else None
+    if not isinstance(entries, list):
+        return []
+
+    models: list[str] = []
+    for entry in entries:
+        if isinstance(entry, Mapping):
+            name = entry.get("id") or entry.get("name")
+        else:
+            name = entry
+        if isinstance(name, str) and name.strip():
+            models.append(name.strip())
+    return sorted(set(models))
 
 
 def format_llm_error(exc: BaseException) -> str:
