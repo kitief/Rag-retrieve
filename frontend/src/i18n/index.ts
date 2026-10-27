@@ -15,6 +15,7 @@
  */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { localAuthHeaders } from '@/lib/desktop'
 import { en, messages, MessageKey } from './messages'
 
 export const SUPPORTED_LANGUAGES = ['en', 'zh'] as const
@@ -147,7 +148,9 @@ export function initLocale(defaultLanguage?: string | null) {
  */
 export async function syncLocaleFromServer(): Promise<Language> {
   try {
-    const response = await fetch('/api/config', { headers: { Accept: 'application/json' } })
+    const response = await fetch('/api/config', {
+      headers: { Accept: 'application/json', ...localAuthHeaders() },
+    })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const data: { default_language?: string; supported_languages?: string[] } = await response.json()
     const language = normalizeLanguage(data.default_language)

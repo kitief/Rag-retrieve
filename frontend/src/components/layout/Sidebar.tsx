@@ -9,6 +9,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useThemeStore } from '@/store/themeStore'
 import { useT, useDateLocale } from '@/i18n/useT'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { useSettings } from '@/api/settings'
+import { isDesktopBuild } from '@/lib/desktop'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -24,6 +26,8 @@ import { useToast } from '@/components/ui/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { parseBackendDate } from '@/lib/utils'
+
+const FIRST_RUN_FLAG = 'ragvault-onboarding-done'
 
 interface SidebarProps {
   collapsed: boolean
@@ -44,6 +48,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsSection, setSettingsSection] = useState<'language' | 'api'>('language')
+  const { data: settingsData } = useSettings(true)
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
   const updateChat = useUpdateChat()
@@ -125,6 +131,23 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  // First run in the desktop build: a fresh install has no API key, so every AI
+  // feature answers with "LLM not configured". Rather than let the user hit that
+  // wall, open the settings dialog on the API section once. The flag is stored
+  // per install so a user who deliberately skips it is not nagged again.
+  useEffect(() => {
+    if (!isDesktopBuild()) return
+    if (!settingsData) return
+    if (settingsData.llm.api_key_set) return
+    if (window.localStorage.getItem(FIRST_RUN_FLAG)) return
+    setSettingsSection('api')
+    setSettingsOpen(true)
+  }, [settingsData])
+
+  const dismissFirstRun = () => {
+    window.localStorage.setItem(FIRST_RUN_FLAG, '1')
+  }
 
   return (
     <motion.div
@@ -387,7 +410,17 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </div>
       </div>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={(open) => {
+          setSettingsOpen(open)
+          if (!open) {
+            dismissFirstRun()
+            setSettingsSection('language')
+          }
+        }}
+        initialSection={settingsSection}
+      />
     </motion.div>
   )
 }

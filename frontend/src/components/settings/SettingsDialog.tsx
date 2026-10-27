@@ -85,12 +85,22 @@ const MANUAL_MODEL = '__manual__'
 interface SettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * Section to show when the dialog opens. First-run onboarding jumps straight
+   * to "api", because the only thing standing between a fresh install and a
+   * working assistant is a key.
+   */
+  initialSection?: Section
 }
 
-export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export function SettingsDialog({
+  open,
+  onOpenChange,
+  initialSection,
+}: SettingsDialogProps) {
   const t = useT()
   const { toast } = useToast()
-  const [section, setSection] = useState<Section>('language')
+  const [section, setSection] = useState<Section>(initialSection ?? 'language')
 
   const language = useLanguageStore((state) => state.language)
   const setLanguage = useLanguageStore((state) => state.setLanguage)
@@ -127,6 +137,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     if (open) seedFrom(data)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, data])
+
+  useEffect(() => {
+    if (open && initialSection) setSection(initialSection)
+    // Only react to the dialog opening, not to later section clicks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const providerOptions = data?.providers ?? []
   const savedKeys = data?.api_keys ?? []

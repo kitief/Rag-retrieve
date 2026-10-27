@@ -1,28 +1,30 @@
 # RagVault
 
-> Self-Hosted · RAG-Powered AI Learning System · Cloud LLM + Local Embeddings
+> 自托管 · RAG 驱动的 AI 学习系统 · 云端 LLM + 本地向量化
 >
-> **Release `alpha-v1.2`** · Repository: <https://github.com/kitief/Rag-retrieve>
+> **版本 `alpha-v1.3`** · 仓库地址：<https://github.com/kitief/Rag-retrieve>
+>
+> 简体中文 | [English](README.en.md)
 
-A self-hosted Retrieval-Augmented Generation (RAG) learning platform for students. Upload PDF and PPTX files to create "knowledge spaces," then ask questions, generate quizzes, create AI study notes, track weak topics, and get personalized study recommendations.
+一个面向学生的自托管检索增强生成（RAG）学习平台。上传 PDF 和 PPTX 文件即可创建「知识空间」，随后可以进行提问、生成测验、创建 AI 学习笔记、追踪薄弱知识点，并获得个性化学习建议。
 
-All **answer generation** is delegated to a cloud LLM over an OpenAI-compatible API (**DeepSeek** by default, any compatible endpoint supported). **Embeddings stay local** via FastEmbed ONNX, so your documents are only ever reduced to embeddings on your own machine — only the retrieved snippets are sent to the model provider.
+所有**答案生成**都通过 OpenAI 兼容接口交给云端 LLM 完成（默认使用 **DeepSeek**，也支持任何兼容端点）。**向量化则全程在本地完成**，由 FastEmbed ONNX 负责，因此你的文档只会在本机被转换成向量 —— 只有检索命中的片段会发送给模型服务商。
 
 ---
 
-## ⚡ Quick Start
+## ⚡ 快速开始
 
-### Prerequisites
+### 环境要求
 
-| Tool | Version | Notes |
+| 工具 | 版本 | 说明 |
 |------|---------|-------|
 | Docker | 24.0+ | |
 | Docker Compose | 2.20+ | |
-| RAM | 8GB minimum | Postgres + Chroma + backend + frontend |
-| Disk | 3GB free | Python + Node images plus data volumes |
-| LLM API key | — | DeepSeek: https://platform.deepseek.com/api_keys |
+| 内存 | 最低 8GB | Postgres + Chroma + 后端 + 前端 |
+| 磁盘 | 3GB 可用空间 | Python + Node 镜像及数据卷 |
+| LLM API Key | — | DeepSeek：https://platform.deepseek.com/api_keys |
 
-### 1. Clone & Configure
+### 1. 克隆并配置
 
 ```bash
 git clone https://github.com/kitief/Rag-retrieve.git
@@ -30,271 +32,309 @@ cd Rag-retrieve
 cp .env.example .env
 ```
 
-Edit `.env` with at minimum:
+编辑 `.env`，至少需要填写：
+
 ```bash
 POSTGRES_PASSWORD=your_strong_password
 JWT_SECRET=your_random_32_char_secret_here
-LLM_API_KEY=sk-...            # required — chat, quizzes, notes all need it
-LLM_PROVIDER=deepseek         # or: openai | custom
+LLM_API_KEY=sk-...            # 必填 —— 对话、测验、笔记全都依赖它
+LLM_PROVIDER=deepseek         # 或：openai | custom
 ```
 
-If you use a non-DeepSeek provider, also set:
+如果你使用的不是 DeepSeek，还需要额外设置：
+
 ```bash
 LLM_BASE_URL=https://your-endpoint/v1
 LLM_MODEL=your-model-name
 ```
 
-### 2. Start All Services
+### 2. 启动所有服务
 
 ```bash
 docker compose up -d
 ```
 
-This starts **4 services**: `postgres`, `chromadb`, `backend`, `frontend`.
-There is no local model server and no GGUF download.
+该命令会启动 **4 个服务**：`postgres`、`chromadb`、`backend`、`frontend`。
+没有本地模型服务，也不会下载 GGUF 模型。
 
-### 3. Open the App
+### 3. 打开应用
 
 ```
 http://localhost:3000
 ```
 
-Register an account, create a Knowledge Space, upload documents, and start learning!
+注册账号、创建知识空间、上传文档，然后就可以开始学习了！
 
-> ⚠️ Internet is required at runtime for LLM inference (the provider API), and on first start to pull Docker images and the FastEmbed ONNX model.
+> ⚠️ 运行时需要联网（用于调用 LLM 服务商接口）；首次启动时也需要联网，以便拉取 Docker 镜像和 FastEmbed ONNX 模型。
 
 ---
 
-## 🏗 Architecture
+## 🖥 Windows 桌面版
+
+除了 Docker 部署，本仓库还可以打包成**免 Docker、免 Python 环境的 Windows 桌面应用**：
+双击安装，后端（PyInstaller 冻结的 FastAPI + SQLite + 嵌入式 Chroma）由 Tauri 壳自动拉起，
+界面在原生 WebView2 窗口里运行。
+
+**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_1.3.0_x64-setup.exe`（约 137 MiB）
+
+安装位置为 `%LOCALAPPDATA%\RagVault`（无需管理员权限），用户数据在 `%APPDATA%\RagVault`。
+
+> **首次运行**：安装包未做代码签名，Windows SmartScreen 会提示「已保护你的电脑」。
+> 点「更多信息」→「仍要运行」；或对安装包右键 → 属性 → 勾选「解除锁定」再装。
+
+**从源码构建**（需要 Rust MSVC 工具链 + Python 3.11 + Node 20+）：
+
+```powershell
+# 1) 前端
+cd frontend; npm run build
+# 2) 冻结后端（约 5 分钟，产物 321 MB）
+.venv-desktop\Scripts\pyinstaller backend\ragvault-backend.spec
+# 3) 重新同步前端 bundle 进冻结产物（tauri 不会替你重打包）
+Copy-Item frontend\dist\* dist\ragvault-backend\_internal\frontend\dist\ -Recurse -Force
+# 4) 打安装包（首次需代理下载 NSIS）
+$env:https_proxy="http://127.0.0.1:7897"
+frontend\node_modules\.bin\tauri build
+```
+
+完整的设计权衡、踩坑记录与验收清单见
+[docs/desktop-packaging.md](docs/desktop-packaging.md)。
+
+桌面版与 Docker 版的差异：
+
+| | Docker 版 | 桌面版 |
+| --- | --- | --- |
+| 数据库 | PostgreSQL | SQLite（WAL） |
+| 向量库 | ChromaDB Server | 嵌入式 Chroma（PersistentClient） |
+| 启动 | `docker compose up -d` | 双击 exe |
+| 数据位置 | Docker 卷 | `%APPDATA%\RagVault` |
+| 资源上传上限 | 2 GB | 500 MB |
+| 访问方式 | 浏览器 `localhost:3000` | 原生窗口 |
+
+---
+
+## 🏗 架构
 
 ```
-Browser (React + Vite)
+浏览器 (React + Vite)
    │  REST + SSE  │
    ▼               ▼
-FastAPI Backend (port 8000)
-   ├── Auth (JWT)
-   ├── Ingestion Service
-   │    └── PDF/PPTX/Word/TXT/MD/Image/Video/Audio → Parse → Chunk → Embed → ChromaDB
-   ├── RAG Service (LangGraph)
-   │    └── Question → Embed → Retrieve → LLM → Answer + Citations  (SSE streaming)
-   ├── Quiz Service
-   │    └── LLM generates MCQs in parallel batches → grade → weak topics
-   ├── Notes Service
-   │    └── LLM generates page-by-page study cards → downloadable PDF
-   └── Recommendation Service
-        └── LangGraph → LLM → personalised Markdown study plan
+FastAPI 后端 (端口 8000)
+   ├── 认证 (JWT)
+   ├── 摄取服务
+   │    └── PDF/PPTX/Word/TXT/MD/图片/音视频 → 解析 → 分块 → 向量化 → ChromaDB
+   ├── RAG 服务 (LangGraph)
+   │    └── 提问 → 向量化 → 检索 → LLM → 答案 + 引用  (SSE 流式)
+   ├── 测验服务
+   │    └── LLM 并行分批生成选择题 → 评分 → 薄弱知识点
+   ├── 笔记服务
+   │    └── LLM 逐页生成学习卡片 → 可下载 PDF
+   └── 推荐服务
+        └── LangGraph → LLM → 个性化 Markdown 学习计划
    │
-   ├── PostgreSQL (users, chats, messages, documents, quizzes, notes)
-   ├── ChromaDB 0.5.18 (vector embeddings, per chat_id collection)
-   └── Cloud LLM (OpenAI-compatible Chat Completions API — DeepSeek by default)
+   ├── PostgreSQL（用户、会话、消息、文档、测验、笔记）
+   ├── ChromaDB 0.5.18（向量嵌入，每个 chat_id 一个 collection）
+   └── 云端 LLM（OpenAI 兼容的 Chat Completions 接口 —— 默认 DeepSeek）
 ```
 
-### LLM Provider
+### LLM 服务商
 
-`backend/app/services/llm_client.py` is the single place that talks to a model
-provider. It speaks the OpenAI Chat Completions protocol, with a provider preset
-table:
+`backend/app/services/llm_client.py` 是与模型服务商通信的唯一入口。它使用
+OpenAI Chat Completions 协议，并内置了一张服务商预设表：
 
-| `LLM_PROVIDER` | Default base URL | Default model | Key env var |
+| `LLM_PROVIDER` | 默认 Base URL | 默认模型 | 密钥环境变量 |
 |---|---|---|---|
 | `deepseek` | `https://api.deepseek.com/v1` | `deepseek-chat` | `LLM_API_KEY` |
 | `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | `LLM_API_KEY` |
-| `custom` | *(from `LLM_BASE_URL`)* | *(from `LLM_MODEL`)* | `LLM_API_KEY` |
+| `custom` | *（取自 `LLM_BASE_URL`）* | *（取自 `LLM_MODEL`）* | `LLM_API_KEY` |
 
-Explicit `LLM_BASE_URL` / `LLM_MODEL` values always win over the preset, so any
-OpenAI-compatible gateway (Azure OpenAI, Moonshot, Qwen, a self-hosted vLLM, …)
-works by setting `LLM_PROVIDER=custom`.
+显式设置的 `LLM_BASE_URL` / `LLM_MODEL` 始终优先于预设值，因此任何
+OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）只要设置
+`LLM_PROVIDER=custom` 即可接入。
 
-Features: token streaming for chat SSE, `response_format=json_object` for the
-notes generator, automatic retry with exponential backoff on 429/5xx, and a
-startup probe that only logs a warning when the key is missing (the API still
-boots and `/health` stays green).
+功能特性：对话 SSE 的 token 流式输出、笔记生成器使用的
+`response_format=json_object`、遇到 429/5xx 时自动按指数退避重试，以及一个
+启动探测 —— 密钥缺失时只记录警告（API 仍能正常启动，`/health` 保持绿色）。
 
-> The old local stack (`model-init` + `llm` llama.cpp services, `app/utils/ollama_helper.py`,
-> `app/services/llm_gate.py`, the LangChain `Ollama` clients) has been removed.
-> `scripts/setup_model.py` and `models/*.gguf` are no longer used by compose.
+> 旧的本地栈（`model-init` + `llm` llama.cpp 服务、`app/utils/ollama_helper.py`、
+> `app/services/llm_gate.py`、LangChain 的 `Ollama` 客户端）已被移除。
+> `scripts/setup_model.py` 和 `models/*.gguf` 已不再被 compose 使用。
 
 ---
 
-## 🌐 Language (English / 简体中文)
+## 🌐 多语言（English / 简体中文）
 
-Everything the user reads — the web UI, validation errors, and the answers the
-model writes — can be switched between **English** and **Simplified Chinese**.
+用户能看到的一切 —— Web 界面、校验错误信息、以及模型写出的答案 —— 都可以在
+**English** 和 **简体中文** 之间切换。
 
-### Deployment default
+### 部署级默认语言
 
-Set `APP_LANGUAGE` in `.env` and restart the backend:
+在 `.env` 中设置 `APP_LANGUAGE` 并重启后端：
 
 ```env
-APP_LANGUAGE=zh     # zh = 简体中文, en = English (default)
+APP_LANGUAGE=zh     # zh = 简体中文，en = English（默认）
 ```
 
-`docker-compose.yml` forwards it to the backend container. It is exposed to the
-browser by `GET /config` (`default_language`), so a fresh browser opening the app
-starts in that language.
+`docker-compose.yml` 会把它透传给后端容器。该值通过 `GET /config`
+（`default_language` 字段）暴露给浏览器，因此全新浏览器首次打开应用时就会使用该语言。
 
-### Per-visitor override
+### 单个访问者覆盖
 
-The language switcher sits in the sidebar footer, next to the dark/light toggle
-(collapsed to a single globe button when the sidebar is narrow). A choice made
-there is stored in `localStorage` (`ragvault-language-preference`) and wins over
-`APP_LANGUAGE` for that browser only — handy for a shared machine or when you
-want to demo both locales.
+语言切换器位于侧边栏底部，紧挨着深色/浅色切换按钮（侧边栏变窄时会收成一个地球图标按钮）。
+在此处做出的选择会存入 `localStorage`（`ragvault-language-preference`），并且仅对该浏览器生效，
+优先级高于 `APP_LANGUAGE` —— 这对共用机器、或需要同时演示两种语言的场景很方便。
 
-### How the language reaches the backend
+### 语言如何传递到后端
 
-1. `src/api/client.ts` adds an `X-App-Language: en|zh` header to every axios
-   request, and `src/api/messages.ts` does the same on the SSE `fetch`, so
-   streamed answers follow the UI.
-2. `app/main.py` wraps the ASGI app in `LanguageMiddleware`, which stores the
-   header value in a `contextvars.ContextVar` (bare ASGI middleware, so the value
-   survives while a streaming response body is being consumed).
-3. `app/core/i18n.py` resolves the language per request
-   (`X-App-Language` → `APP_LANGUAGE` → `en`) and provides:
-   - `t("chat.not_found")` for API error details,
-   - `prompt_language_directive()` appended to every LLM prompt so the model
-     answers in the active language (prompts themselves stay in English),
-   - language-aware PDF export: the notes PDFs are laid out with PyMuPDF's
-     `Story` engine, which wraps CJK text by width and falls back to a bundled
-     font for Chinese glyphs (the built-in Helvetica has none), then subsets the
-     embedded font so a one-page summary stays around 30 KB.
+1. `src/api/client.ts` 为每个 axios 请求加上 `X-App-Language: en|zh` 请求头，
+   `src/api/messages.ts` 对 SSE 的 `fetch` 也做同样处理，因此流式答案会跟随界面语言。
+2. `app/main.py` 用 `LanguageMiddleware` 包裹 ASGI 应用，把请求头的值存入
+   `contextvars.ContextVar`（这是一个裸 ASGI 中间件，因此该值在流式响应体
+   被消费期间仍然有效）。
+3. `app/core/i18n.py` 按请求解析语言
+   （`X-App-Language` → `APP_LANGUAGE` → `en`），并提供：
+   - `t("chat.not_found")` 用于 API 错误详情，
+   - `prompt_language_directive()` 追加到每个 LLM 提示词中，让模型用当前语言
+     作答（提示词本身保持英文），
+   - 语言感知的 PDF 导出：笔记 PDF 使用 PyMuPDF 的 `Story` 引擎排版，
+     该引擎会按宽度折行 CJK 文本，并对中文字形回退到内置字体
+     （内置的 Helvetica 没有中文字形），随后对嵌入字体做子集化，
+     使一页摘要的体积保持在 30 KB 左右。
 
-Nothing is cached across requests, so two browsers can use different languages
-at the same time.
+跨请求不做任何缓存，因此两个浏览器可以同时使用不同语言。
 
-### Adding a language
+### 新增一种语言
 
-1. Add the code to `SUPPORTED_LANGUAGES` in `frontend/src/i18n/index.ts` (and
-   to `SUPPORTED_LANGUAGES` in `backend/app/core/i18n.py`).
-2. Copy the `zh` table in `frontend/src/i18n/messages.ts` and translate it —
-   `tsc` fails if a key is missing, because `zh` is typed as
-   `Record<MessageKey, string>`.
-3. Copy the `zh` block in `backend/app/core/i18n.py`; drop a matching date-fns
-   locale into `useDateLocale()`.
+1. 在 `frontend/src/i18n/index.ts` 的 `SUPPORTED_LANGUAGES` 中加入语言代码
+   （并在 `backend/app/core/i18n.py` 的 `SUPPORTED_LANGUAGES` 中同步添加）。
+2. 复制 `frontend/src/i18n/messages.ts` 中的 `zh` 表并翻译 ——
+   如果有键缺失，`tsc` 会直接报错，因为 `zh` 的类型是
+   `Record<MessageKey, string>`。
+3. 复制 `backend/app/core/i18n.py` 中的 `zh` 代码块；并往
+   `useDateLocale()` 中放入对应的 date-fns 语言包。
 
 ---
 
-## 📁 Supported File Types
+## 📁 支持的文件类型
 
-| Type | Extensions | Status | Processing |
+| 类型 | 扩展名 | 状态 | 处理方式 |
 |------|-----------|--------|------------|
-| PDF | `.pdf` | ✅ active | PyMuPDF page-by-page; scanned pages fall back to OCR only when `ENABLE_OCR_UPLOADS=true` |
-| PowerPoint | `.pptx` `.ppt` | ✅ active | python-pptx slide-by-slide; binary `.ppt` fallback via raw stream extraction |
-| Word | `.docx` `.doc` | 🅿️ shelved | python-docx / ZIP-XML fallback — parser kept, upload rejected |
-| Plain Text | `.txt` `.md` `.csv` | 🅿️ shelved | Direct read, split into ~2000-char pseudo-pages — parser kept |
-| Image | `.png` `.jpg` `.jpeg` `.webp` `.bmp` `.tiff` | 🅿️ shelved | Tesseract OCR with contrast enhancement — needs `ENABLE_OCR_UPLOADS=true` |
-| Video | `.mp4` `.mkv` `.mov` `.avi` `.webm` | 🅿️ shelved | ffmpeg audio extract → Faster-Whisper — needs `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
-| Audio | `.mp3` `.wav` `.m4a` `.ogg` `.flac` `.aac` | 🅿️ shelved | Faster-Whisper (PyAV fallback) — needs `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
+| PDF | `.pdf` | ✅ 已启用 | PyMuPDF 逐页解析；仅当 `ENABLE_OCR_UPLOADS=true` 时扫描页才回退到 OCR |
+| PowerPoint | `.pptx` `.ppt` | ✅ 已启用 | python-pptx 逐张幻灯片解析；二进制 `.ppt` 通过原始流提取作为回退 |
+| Word | `.docx` `.doc` | 🅿️ 已搁置 | python-docx / ZIP-XML 回退 —— 解析器保留，但上传会被拒绝 |
+| 纯文本 | `.txt` `.md` `.csv` | 🅿️ 已搁置 | 直接读取，切分为约 2000 字符的伪页面 —— 解析器保留 |
+| 图片 | `.png` `.jpg` `.jpeg` `.webp` `.bmp` `.tiff` | 🅿️ 已搁置 | Tesseract OCR + 对比度增强 —— 需 `ENABLE_OCR_UPLOADS=true` |
+| 视频 | `.mp4` `.mkv` `.mov` `.avi` `.webm` | 🅿️ 已搁置 | ffmpeg 抽取音轨 → Faster-Whisper —— 需 `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
+| 音频 | `.mp3` `.wav` `.m4a` `.ogg` `.flac` `.aac` | 🅿️ 已搁置 | Faster-Whisper（PyAV 回退） —— 需 `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
 
-> ❌ Anything outside the active set is rejected with a clear 422 error message.
-> 📦 Maximum upload size: **2 GB** per file.
+> ❌ 任何不在已启用列表中的类型都会被拒绝，并返回清晰的 422 错误信息。
+> 📦 单文件最大上传体积：**2 GB**。
 
-### Re-enabling a shelved parser
+### 重新启用已搁置的解析器
 
-The parsing code is *kept in full* at `backend/app/utils/parsers.py`; only the
-entry points are gated. To bring one back:
+解析代码**完整保留**在 `backend/app/utils/parsers.py`；只是入口被开关挡住了。
+要恢复某一种：
 
-1. set `ENABLE_OCR_UPLOADS=true` and/or `ENABLE_AUDIO_VIDEO_UPLOADS=true` in `.env`
-2. un-comment `pytesseract` / `faster-whisper` in `backend/requirements.txt`
-3. un-comment the `tesseract-ocr` / `ffmpeg` `apt-get` block in `backend/Dockerfile`
-4. (optional) add the extensions back to `SUPPORTED_EXTS` in
-   `frontend/src/components/documents/DropZone.tsx`
+1. 在 `.env` 中设置 `ENABLE_OCR_UPLOADS=true` 和/或 `ENABLE_AUDIO_VIDEO_UPLOADS=true`
+2. 在 `backend/requirements.txt` 中取消注释 `pytesseract` / `faster-whisper`
+3. 在 `backend/Dockerfile` 中取消注释 `tesseract-ocr` / `ffmpeg` 的 `apt-get` 代码块
+4. （可选）把扩展名加回 `frontend/src/components/documents/DropZone.tsx`
+   的 `SUPPORTED_EXTS`
 
 ---
 
-## 🖥 Technology Stack
+## 🖥 技术栈
 
-| Layer | Technology |
+| 层级 | 技术 |
 |-------|-----------|
-| Frontend | React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui |
-| Animations | Framer Motion + Three.js |
-| State | TanStack Query v5 + Zustand v5 |
-| Backend | FastAPI + LangGraph |
-| LLM | **Cloud API** over OpenAI-compatible Chat Completions (DeepSeek by default) |
-| Default Model | `deepseek-chat` (configurable via `LLM_PROVIDER` / `LLM_MODEL`) |
-| Embeddings | **FastEmbed** (ONNX Runtime) — `BAAI/bge-small-en-v1.5` |
-| Vector DB | ChromaDB 0.5.18 (persistent local) |
-| Relational DB | PostgreSQL 16 |
-| Speech-to-Text | *Shelved* — Faster-Whisper code kept, disabled by default |
-| OCR | *Shelved* — Tesseract code kept, disabled by default |
-| Auth | JWT (access + refresh tokens), bcrypt |
-| Deployment | Docker + Docker Compose |
+| 前端 | React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui |
+| 动画 | Framer Motion + Three.js |
+| 状态管理 | TanStack Query v5 + Zustand v5 |
+| 后端 | FastAPI + LangGraph |
+| LLM | **云端 API**，走 OpenAI 兼容的 Chat Completions（默认 DeepSeek） |
+| 默认模型 | `deepseek-chat`（可通过 `LLM_PROVIDER` / `LLM_MODEL` 配置） |
+| 向量化 | **FastEmbed**（ONNX Runtime）—— `BAAI/bge-small-en-v1.5` |
+| 向量数据库 | ChromaDB 0.5.18（本地持久化） |
+| 关系型数据库 | PostgreSQL 16 |
+| 语音转文字 | *已搁置* —— Faster-Whisper 代码保留，默认禁用 |
+| OCR | *已搁置* —— Tesseract 代码保留，默认禁用 |
+| 认证 | JWT（access + refresh 双 token），bcrypt |
+| 部署 | Docker + Docker Compose |
 
-No deviations from the specified stack were made.
+实现完全遵循上述技术栈，未作任何偏离。
 
 ---
 
-## ⚙️ Configuration
+## ⚙️ 配置
 
-All configuration is in `.env`. Key variables:
+所有配置都在 `.env` 中。关键变量：
 
-| Variable | Default | Description |
+| 变量 | 默认值 | 说明 |
 |----------|---------|-------------|
 | `LLM_PROVIDER` | `deepseek` | `deepseek` / `openai` / `custom` |
-| `LLM_API_KEY` | *(must set)* | Provider API key — chat, quizzes, notes, titles all need it |
-| `LLM_MODEL` | `deepseek-chat` | Model identifier sent to the provider |
-| `LLM_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI-compatible base URL (overrides the preset) |
-| `LLM_TIMEOUT_SECONDS` | `180` | Per-request timeout |
-| `LLM_MAX_RETRIES` | `3` | Retries on 429 / 5xx / transport errors |
-| `APP_LANGUAGE` | `en` | Deployment default UI + AI language (`en` / `zh`) |
-| `ENABLE_AUDIO_VIDEO_UPLOADS` | `false` | Shelved audio/video transcription |
-| `ENABLE_OCR_UPLOADS` | `false` | Shelved image / scanned-PDF OCR |
-| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | FastEmbed ONNX embedding model |
-| `WHISPER_MODEL` | `base` | Only used if audio/video is re-enabled |
-| `CHUNK_SIZE` | `600` | Target tokens per chunk |
-| `CHUNK_OVERLAP` | `100` | Token overlap between chunks |
-| `TOP_K` | `5` | Number of chunks to retrieve per query |
-| `WHISPER_DEVICE` | `cpu` | Set to `cuda` if GPU available |
-| `POSTGRES_PASSWORD` | *(must set)* | PostgreSQL password |
-| `JWT_SECRET` | *(must set)* | Random 32+ char string for JWT signing |
+| `LLM_API_KEY` | *（必填）* | 服务商 API 密钥 —— 对话、测验、笔记、标题生成都需要 |
+| `LLM_MODEL` | `deepseek-chat` | 发送给服务商的模型标识 |
+| `LLM_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI 兼容的 base URL（覆盖预设值） |
+| `LLM_TIMEOUT_SECONDS` | `180` | 单请求超时时间 |
+| `LLM_MAX_RETRIES` | `3` | 遇到 429 / 5xx / 传输错误时的重试次数 |
+| `APP_LANGUAGE` | `en` | 部署级默认界面与 AI 语言（`en` / `zh`） |
+| `ENABLE_AUDIO_VIDEO_UPLOADS` | `false` | 已搁置的音频/视频转写 |
+| `ENABLE_OCR_UPLOADS` | `false` | 已搁置的图片 / 扫描版 PDF OCR |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | FastEmbed ONNX 向量化模型 |
+| `WHISPER_MODEL` | `base` | 仅在重新启用音频/视频时使用 |
+| `CHUNK_SIZE` | `600` | 每个文本块的目标 token 数 |
+| `CHUNK_OVERLAP` | `100` | 相邻文本块之间的 token 重叠 |
+| `TOP_K` | `5` | 每次查询检索的文本块数量 |
+| `WHISPER_DEVICE` | `cpu` | 有 GPU 时可设为 `cuda` |
+| `POSTGRES_PASSWORD` | *（必填）* | PostgreSQL 密码 |
+| `JWT_SECRET` | *（必填）* | 用于 JWT 签名的 32 位以上随机字符串 |
 
 ---
 
-## 🚀 Usage Guide
+## 🚀 使用指南
 
-### Creating a Knowledge Space
+### 创建知识空间
 
-1. Click **"+ New Chat"** in the sidebar
-2. Give it a name (e.g., "Machine Learning Finals")
-3. Upload your documents via drag-and-drop or click to browse
+1. 点击侧边栏的 **“+ New Chat”**
+2. 给它起个名字（例如“机器学习期末复习”）
+3. 通过拖拽或点击浏览上传你的文档
 
-### Chatting with Your Documents
+### 与文档对话
 
-- Type questions in the chat input and press **Enter** or **Ctrl+Enter**
-- Answers stream token-by-token in real time via SSE with source citations (filename + page number)
-- Citations are strictly grounded — the LLM cannot invent sources
+- 在聊天框输入问题，按 **Enter** 或 **Ctrl+Enter** 发送
+- 答案通过 SSE 实时逐 token 流式输出，并附带来源引用（文件名 + 页码）
+- 引用严格有据 —— LLM 无法凭空捏造来源
 
-### Generating a Quiz
+### 生成测验
 
-1. Open the **Quiz** tab in the right panel
-2. Enter a topic (e.g., "neural networks") and choose number of questions
-3. Click **Generate Quiz** — the LLM creates MCQs from relevant document chunks in parallel batches
-4. Submit answers to see your score, explanations, and weak topics
-5. Click **Get Recommendations** for a personalized Markdown study plan based on your last 5 quiz results
+1. 打开右侧面板的 **Quiz** 标签页
+2. 输入主题（例如“神经网络”）并选择题目数量
+3. 点击 **Generate Quiz** —— LLM 会从相关文档片段中并行分批生成选择题
+4. 提交答案后可查看得分、解析和薄弱知识点
+5. 点击 **Get Recommendations**，基于你最近 5 次测验结果获得个性化的 Markdown 学习计划
 
-### AI Notes
+### AI 笔记
 
-1. Open the **Notes** tab in the right panel
-2. Click **Generate Notes** — the LLM creates structured page-by-page study cards for all uploaded documents
-3. Download as a **searchable PDF** via the PDF download button
-4. After submitting a quiz, generate **Remedial Notes** targeting only the concepts you got wrong (also downloadable as PDF)
+1. 打开右侧面板的 **Notes** 标签页
+2. 点击 **Generate Notes** —— LLM 会为所有已上传文档生成结构化的逐页学习卡片
+3. 通过 PDF 下载按钮导出为**可搜索的 PDF**
+4. 提交测验后，可以生成**补救笔记**，只针对你答错的概念（同样可下载为 PDF）
 
-### Adding More Documents
+### 添加更多文档
 
-Upload new documents to an existing chat — they accumulate in the knowledge base. Use **"Clear Knowledge"** to wipe all vectors and start fresh without deleting the chat.
+向已有会话上传新文档 —— 它们会累加进知识库。使用 **“Clear Knowledge”** 可在不删除会话的前提下清空全部向量并重新开始。
 
-### Renaming or Deleting a Knowledge Space
+### 重命名或删除知识空间
 
-- Chats auto-title themselves after the first question using the LLM
-- Rename via the PATCH chat endpoint or from the UI
-- Delete a chat (purges messages, documents, quizzes, notes, and vector collection)
+- 首次提问后，会话会自动用 LLM 生成标题
+- 可通过 PATCH 会话接口或界面进行重命名
+- 删除会话（会连同消息、文档、测验、笔记及向量库一并清除）
 
 ---
 
-## 🛠 Development Setup
+## 🛠 开发环境搭建
 
 ```bash
-# Backend (Python 3.11)
+# 后端（Python 3.11）
 cd backend
 python -m venv .venv
 source .venv/bin/activate
@@ -302,174 +342,169 @@ pip install -r requirements.txt
 alembic upgrade head
 uvicorn app.main:app --reload
 
-# Frontend (Node 20)
+# 前端（Node 20）
 cd frontend
 npm install
 npm run dev
 ```
 
-Backend runs on `http://localhost:8000`, frontend on `http://localhost:3000` (with proxy to backend).
+后端运行在 `http://localhost:8000`，前端运行在 `http://localhost:3000`（并通过代理指向后端）。
 
 ---
 
-## ⚙️ In-App Settings
+## ⚙️ 应用内设置
 
-Click your avatar at the bottom of the sidebar (or press `Ctrl+,`) to open the
-settings dialog. It has two groups:
+点击侧边栏底部的头像（或按 `Ctrl+,`）即可打开设置对话框。它包含两组设置：
 
-| Group | What it does |
+| 分组 | 作用 |
 | --- | --- |
-| **Language** | Switches the interface, validation messages and AI answers between English and 中文 for the current browser. `Use as deployment default` also stores the choice as the default for new visitors. |
-| **API** | Picks a provider from a dropdown (DeepSeek / OpenAI / any OpenAI-compatible endpoint), then sets the API key, base URL and model. The model field is a dropdown populated from the endpoint's `GET /v1/models`, with a manual-entry escape hatch. `Test connection` probes the endpoint without saving. |
+| **Language（语言）** | 为当前浏览器在 English 和 中文之间切换界面、校验信息和 AI 答案。勾选 `Use as deployment default` 还会把该选择存为所有新访问者的默认值。 |
+| **API** | 从下拉框选择服务商（DeepSeek / OpenAI / 任何 OpenAI 兼容端点），然后设置 API 密钥、base URL 和模型。模型字段是一个从该端点 `GET /v1/models` 动态填充的下拉框，并保留手动输入的兜底方式。`Test connection` 会在不保存的前提下探测端点连通性。 |
 
-### Saved API keys
+### 已保存的 API 密钥
 
-The **API** panel keeps a small key vault (`llm_api_keys` table) so several
-credentials can coexist and be swapped without retyping them:
+**API** 面板维护着一个小型密钥库（`llm_api_keys` 表），让多组凭据可以共存并随时切换，无需反复输入：
 
-| Action | Effect |
+| 操作 | 效果 |
 | --- | --- |
-| Type a key + label → **Save key** | Stores the key and activates it immediately |
-| **Saved keys** dropdown | Switches the active credential; the choice applies to the very next request |
-| Trash icon | Deletes the currently active key |
+| 输入密钥 + 标签 → **Save key** | 保存该密钥并立即启用 |
+| **Saved keys** 下拉框 | 切换当前生效的凭据；该选择对下一个请求即刻生效 |
+| 垃圾桶图标 | 删除当前生效的密钥 |
 
-Exactly one key is active at a time — it is mirrored into `app_settings.llm_api_key`
-so the request path stays a single dict lookup. Keys are write-only over the API:
-responses only ever contain a masked hint such as `sk-…1a2b`.
+同一时刻只有一个密钥处于生效状态 —— 它会被同步到 `app_settings.llm_api_key`，
+这样请求链路就只需一次字典查找。密钥在 API 上是只写的：
+响应中只会出现诸如 `sk-…1a2b` 这样的掩码提示。
 
-Values are stored in the `app_settings` table, so they **survive restarts and
-override the matching `.env` entries** — no image rebuild is needed. Only the
-retrieved document snippets are sent to the provider; embeddings stay local.
+这些值存放在 `app_settings` 表中，因此它们**能跨重启保留，并覆盖 `.env` 中的对应项**
+—— 无需重新构建镜像。只有检索到的文档片段会发送给服务商；向量化始终留在本地。
 
-`Restore defaults` in the dialog footer deletes every stored override so the
-`.env` configuration applies again.
+对话框底部的 `Restore defaults` 会删除所有已存储的覆盖项，使 `.env` 配置重新生效。
 
 ---
 
-## 🧪 Running Tests
+## 🧪 运行测试
 
-The test suite is not part of the runtime image, so install the extra
-dependencies first:
+测试套件不属于运行时镜像，因此需要先安装额外依赖：
 
 ```bash
-# Backend tests
+# 后端测试
 cd backend
 pip install pytest pytest-asyncio aiosqlite
 pytest tests/ -v --tb=short
 
-# Frontend lint
+# 前端 lint
 cd frontend
 npm run lint
 ```
 
-The fixture in `backend/tests/conftest.py` uses in-memory SQLite, so no
-PostgreSQL or ChromaDB instance is required.
+`backend/tests/conftest.py` 中的 fixture 使用内存 SQLite，因此不需要
+PostgreSQL 或 ChromaDB 实例。
 
 ---
 
-## 🔧 Service Management
+## 🔧 服务管理
 
 ```bash
-# View logs
+# 查看日志
 docker compose logs -f backend
 
-# Restart a service
+# 重启某个服务
 docker compose restart backend
 
-# Full teardown (preserves data volumes)
+# 完整停止（保留数据卷）
 docker compose down
 
-# Full teardown + delete all data
+# 完整停止 + 删除所有数据
 docker compose down -v
 ```
 
-### Optional: Nginx Reverse Proxy
+### 可选：Nginx 反向代理
 
-An Nginx service is defined in `docker-compose.yml` but gated behind a Docker Compose profile. To enable it:
+`docker-compose.yml` 中定义了一个 Nginx 服务，但被 Docker Compose profile 挡住了。要启用它：
 
 ```bash
 docker compose --profile nginx up -d
 ```
 
-Nginx will serve on port 80 and proxy to both backend and frontend.
+Nginx 会在 80 端口提供服务，并同时反向代理后端和前端。
 
 ---
 
-## 📊 API Reference
+## 📊 API 参考
 
-The API is documented at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc` after startup.
+启动后，API 文档可在 `http://localhost:8000/docs`（Swagger UI）和 `http://localhost:8000/redoc` 查看。
 
-**Core endpoints:**
+**核心接口：**
 
-| Method | Path | Description |
+| 方法 | 路径 | 说明 |
 |--------|------|-------------|
-| `POST` | `/auth/register` | Register new user |
-| `POST` | `/auth/login` | Login, get JWT tokens |
-| `GET` | `/chats` | List all knowledge spaces |
-| `POST` | `/chats` | Create new knowledge space |
-| `GET` | `/chats/{id}` | Get a single knowledge space |
-| `PATCH` | `/chats/{id}` | Rename a knowledge space |
-| `DELETE` | `/chats/{id}` | Delete a knowledge space (purges all data) |
-| `POST` | `/chats/{id}/documents` | Upload + ingest document (async, returns 202) |
-| `GET` | `/chats/{id}/documents` | List documents and their processing status |
-| `DELETE` | `/chats/{id}/documents/{doc_id}` | Delete a single document and its vectors |
-| `POST` | `/chats/{id}/messages` | Ask a question (SSE streaming or JSON) |
-| `GET` | `/chats/{id}/messages` | Get chat history |
-| `DELETE` | `/chats/{id}/messages` | Clear all messages |
-| `DELETE` | `/chats/{id}/messages/{msg_id}` | Delete a single message |
-| `POST` | `/chats/{id}/quiz` | Generate quiz (MCQs from documents) |
-| `GET` | `/chats/{id}/quiz-history` | List all past quizzes for a space |
-| `POST` | `/quiz/{id}/submit` | Submit quiz answers, get score + weak topics |
-| `GET` | `/chats/{id}/recommendations` | Get personalized study plan (LangGraph) |
-| `POST` | `/chats/{id}/notes` | Generate AI study note cards |
-| `GET` | `/chats/{id}/notes` | Fetch latest AI notes |
-| `GET` | `/chats/{id}/notes/pdf` | Download AI notes as PDF |
-| `POST` | `/chats/{id}/quiz-remedial-notes` | Generate remedial notes for missed questions |
-| `GET` | `/chats/{id}/quiz-remedial-notes` | Fetch latest remedial notes |
-| `GET` | `/chats/{id}/quiz-remedial-notes/pdf` | Download remedial notes as PDF |
-| `POST` | `/chats/{id}/clear-knowledge` | Wipe all vectors + documents for a chat |
-| `GET` | `/health` | Health check (`{"status": "ok"}`) |
+| `POST` | `/auth/register` | 注册新用户 |
+| `POST` | `/auth/login` | 登录，获取 JWT token |
+| `GET` | `/chats` | 列出所有知识空间 |
+| `POST` | `/chats` | 创建新知识空间 |
+| `GET` | `/chats/{id}` | 获取单个知识空间 |
+| `PATCH` | `/chats/{id}` | 重命名知识空间 |
+| `DELETE` | `/chats/{id}` | 删除知识空间（清除所有数据） |
+| `POST` | `/chats/{id}/documents` | 上传并摄取文档（异步，返回 202） |
+| `GET` | `/chats/{id}/documents` | 列出文档及其处理状态 |
+| `DELETE` | `/chats/{id}/documents/{doc_id}` | 删除单个文档及其向量 |
+| `POST` | `/chats/{id}/messages` | 提问（SSE 流式或 JSON） |
+| `GET` | `/chats/{id}/messages` | 获取聊天历史 |
+| `DELETE` | `/chats/{id}/messages` | 清空所有消息 |
+| `DELETE` | `/chats/{id}/messages/{msg_id}` | 删除单条消息 |
+| `POST` | `/chats/{id}/quiz` | 生成测验（从文档出选择题） |
+| `GET` | `/chats/{id}/quiz-history` | 列出某个空间的所有历史测验 |
+| `POST` | `/quiz/{id}/submit` | 提交测验答案，获取得分 + 薄弱知识点 |
+| `GET` | `/chats/{id}/recommendations` | 获取个性化学习计划（LangGraph） |
+| `POST` | `/chats/{id}/notes` | 生成 AI 学习笔记卡片 |
+| `GET` | `/chats/{id}/notes` | 获取最新的 AI 笔记 |
+| `GET` | `/chats/{id}/notes/pdf` | 将 AI 笔记下载为 PDF |
+| `POST` | `/chats/{id}/quiz-remedial-notes` | 针对答错的题目生成补救笔记 |
+| `GET` | `/chats/{id}/quiz-remedial-notes` | 获取最新的补救笔记 |
+| `GET` | `/chats/{id}/quiz-remedial-notes/pdf` | 将补救笔记下载为 PDF |
+| `POST` | `/chats/{id}/clear-knowledge` | 清空某个会话的全部向量 + 文档 |
+| `GET` | `/health` | 健康检查（`{"status": "ok"}`） |
 
 ---
 
-## 🗂 Project Structure
+## 🗂 项目结构
 
 ```
 RagVault/
 ├── frontend/               # React + Vite + TypeScript
 │   ├── src/
 │   │   ├── api/            # TanStack Query hooks
-│   │   ├── components/     # UI components (shadcn/ui + custom)
-│   │   ├── pages/          # Route pages
+│   │   ├── components/     # UI 组件（shadcn/ui + 自定义）
+│   │   ├── pages/          # 路由页面
 │   │   ├── store/          # Zustand stores
-│   │   ├── types/          # TypeScript types
-│   │   └── theme.ts        # Design system tokens
-│   ├── nginx.conf          # Production Nginx config for the frontend container
+│   │   ├── types/          # TypeScript 类型
+│   │   └── theme.ts        # 设计系统 token
+│   ├── nginx.conf          # 前端容器的生产环境 Nginx 配置
 │   └── Dockerfile
-├── backend/                # FastAPI application
+├── backend/                # FastAPI 应用
 │   ├── app/
-│   │   ├── models/         # SQLAlchemy ORM (user, chat, document, message, quiz, note, memory)
-│   │   ├── schemas/        # Pydantic schemas
-│   │   ├── routers/        # FastAPI routers (auth, chats, documents, messages, quiz, notes)
-│   │   ├── services/       # Business logic (rag, quiz, notes, ingestion, recommendation, auth)
-│   │   ├── utils/          # Parsers, chunker, FastEmbed embedder, ChromaDB client
-│   │   └── core/           # Auth dependencies, security
-│   ├── alembic/            # DB migrations
+│   │   ├── models/         # SQLAlchemy ORM（user, chat, document, message, quiz, note, memory）
+│   │   ├── schemas/        # Pydantic schema
+│   │   ├── routers/        # FastAPI 路由（auth, chats, documents, messages, quiz, notes）
+│   │   ├── services/       # 业务逻辑（rag, quiz, notes, ingestion, recommendation, auth）
+│   │   ├── utils/          # 解析器、分块器、FastEmbed 向量化、ChromaDB 客户端
+│   │   └── core/           # 认证依赖、安全
+│   ├── alembic/            # 数据库迁移
 │   └── Dockerfile          # python:3.11-slim + Tesseract + ffmpeg
-├── models/                 # Legacy GGUF dir (no longer used by docker-compose)
+├── models/                 # 遗留的 GGUF 目录（docker-compose 已不再使用）
 ├── docker/
-│   └── nginx.conf          # Nginx reverse proxy config (optional profile)
-├── docker-compose.yml      # 4 services (postgres, chromadb, backend, frontend)
-└── .env.example            # Config template
+│   └── nginx.conf          # Nginx 反向代理配置（可选 profile）
+├── docker-compose.yml      # 4 个服务（postgres, chromadb, backend, frontend）
+└── .env.example            # 配置模板
 ```
 
 ---
 
-## 🎮 Remote / Self-Hosted LLM (Optional)
+## 🎮 远程 / 自托管 LLM（可选）
 
-Since answer generation is a plain OpenAI-compatible HTTP call, you can point
-RagVault at any compatible server instead of DeepSeek — including a local
-vLLM / llama.cpp / Ollama gateway on another machine:
+由于答案生成只是一次普通的 OpenAI 兼容 HTTP 调用，你可以把
+RagVault 指向任何兼容服务器而非 DeepSeek —— 包括运行在另一台机器上的
+本地 vLLM / llama.cpp / Ollama 网关：
 
 ```bash
 LLM_PROVIDER=custom
@@ -478,23 +513,25 @@ LLM_MODEL=qwen2.5:7b-instruct
 LLM_API_KEY=not-needed-but-must-be-non-empty
 ```
 
-`LLM_API_KEY` must be a non-empty string even for keyless local servers,
-because the client refuses to send unauthenticated requests.
+即便对于无需密钥的本地服务器，`LLM_API_KEY` 也必须是非空字符串，
+因为客户端拒绝发送未认证的请求。
 
 ---
 
-## 📝 License
+## 📝 许可证
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License。详见 [LICENSE](LICENSE)。
 
-This release (`alpha-v1.2`) is derived from the original
-[RagVault](https://github.com/Meet-paladiya/RagVault) project by Meet Paladiya.
-The upstream history is intentionally not carried over; this repository starts
-from a single `alpha-v1.1` commit and adds the settings dialog in `alpha-v1.2`.
+本版本（`alpha-v1.3`）衍生自 Meet Paladiya 的原始
+[RagVault](https://github.com/Meet-paladiya/RagVault) 项目。
+上游提交历史被有意丢弃；本仓库从单个 `alpha-v1.1` 提交开始，
+`alpha-v1.2` 增加了设置对话框，`alpha-v1.3` 增加了 Windows 桌面版
+（Tauri v2 壳 + PyInstaller 后端，详见
+[docs/desktop-packaging.md](docs/desktop-packaging.md)）。
 
 ---
 
-> **Note to contributors:** Answer generation is centralized in
-> `backend/app/services/llm_client.py` — add new AI features by calling
-> `chat_completion()` / `stream_chat_completion()` there rather than importing a
-> provider SDK directly, so the provider stays swappable via `.env`.
+> **致贡献者：** 答案生成统一集中在
+> `backend/app/services/llm_client.py` —— 新增 AI 功能时请调用其中的
+> `chat_completion()` / `stream_chat_completion()`，而不要直接导入某家服务商的
+> SDK，这样服务商就能继续通过 `.env` 自由切换。

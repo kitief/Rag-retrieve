@@ -45,3 +45,15 @@ logs/
 # Local GGUF weights (root-level only — `backend/app/models/` holds ORM models)
 /models/
 *.gguf
+
+# Desktop build / single-process development
+.venv-desktop/
+.desktop-data/
+src-tauri/target/
+src-tauri/binaries/
+build/desktop/
+
+# Transient build scratch (esbuild TMPDIR, pip/gym caches created in-repo by tooling)
+frontend/.esbuild-tmp/
+data-gym-cache/
+pip-unpack-*/

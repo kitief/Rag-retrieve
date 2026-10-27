@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from './client'
 import { useAuthStore } from '@/store/authStore'
 import { activeLanguage } from '@/i18n'
+import { localAuthHeaders } from '@/lib/desktop'
 import type { MessageListResponse } from '@/types'
 
 export const useMessages = (chatId?: string) => {
@@ -70,6 +71,7 @@ export const streamMessage = async (
         Authorization: `Bearer ${tokens?.access_token ?? ''}`,
         // Streamed answers are generated in the UI language.
         'X-App-Language': activeLanguage(),
+        ...localAuthHeaders(),
       },
       body: JSON.stringify({ content, stream: true }),
       signal,

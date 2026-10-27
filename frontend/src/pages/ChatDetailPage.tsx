@@ -168,12 +168,35 @@ export function ChatDetailPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messages = messagesData?.messages ?? []
 
+  // The optimistic bubble must disappear as soon as the persisted copy arrives.
+  // Counting messages is not reliable (two invalidations can land out of order,
+  // and the refetch may return only the user turn), so compare the actual text.
+  const persistedUserEcho =
+    optimisticUserMessage !== null &&
+    messages.some(
+      (msg) =>
+        msg.role === 'user' &&
+        msg.content.trim() === optimisticUserMessage.trim() &&
+        !msg.id.startsWith('temp-'),
+    )
+
+  useEffect(() => {
+    if (persistedUserEcho) {
+      setOptimisticUserMessage(null)
+    }
+  }, [persistedUserEcho])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent, optimisticUserMessage])
 
   useEffect(() => {
-    if (sentMessageCountRef.current !== null && messages.length > sentMessageCountRef.current) {
+    // Wait for the assistant turn as well — a refetch that only brings back the
+    // user message must not tear down the in-flight stream.
+    if (
+      sentMessageCountRef.current !== null &&
+      messages.length >= sentMessageCountRef.current + 2
+    ) {
       setOptimisticUserMessage(null)
       setStreamingContent(null)
       sentMessageCountRef.current = null
@@ -277,7 +300,12 @@ export function ChatDetailPage() {
     if (!chatId) return
     setIsDownloadingNotesPdf(true)
     try {
-      await downloadNotesPdf(chatId)
+      const savedTo = await downloadNotesPdf(chatId)
+      // The desktop shell opens a native save dialog; a null result means the
+      // user cancelled it, which needs no error toast.
+      if (savedTo) {
+        toast({ title: t('chat.pdfSaved'), description: t('chat.pdfSavedDesc', { path: savedTo }) })
+      }
     } catch {
       toast({ title: t('chat.pdfFailed'), description: t('chat.pdfHint'), variant: 'destructive' })
     } finally {
@@ -302,7 +330,10 @@ export function ChatDetailPage() {
     if (!chatId) return
     setIsDownloadingRemedialPdf(true)
     try {
-      await downloadRemedialNotesPdf(chatId)
+      const savedTo = await downloadRemedialNotesPdf(chatId)
+      if (savedTo) {
+        toast({ title: t('chat.pdfSaved'), description: t('chat.pdfSavedDesc', { path: savedTo }) })
+      }
     } catch {
       toast({ title: t('chat.remedialPdfFailed'), description: t('chat.remedialPdfHint'), variant: 'destructive' })
     } finally {
@@ -581,8 +612,9 @@ export function ChatDetailPage() {
                 {messages.map((msg) => (
                   <MessageBubble key={msg.id} message={msg} />
                 ))}
-                {optimisticUserMessage !== null && (sentMessageCountRef.current === null || messages.length <= sentMessageCountRef.current) && (
+                {optimisticUserMessage !== null && !persistedUserEcho && (
                   <MessageBubble
+                    key="temp-optimistic-user"
                     message={{
                       id: 'temp-optimistic-user',
                       chat_id: chatId!,
@@ -593,8 +625,8 @@ export function ChatDetailPage() {
                     }}
                   />
                 )}
-                {streamingContent !== null && (sentMessageCountRef.current === null || messages.length <= sentMessageCountRef.current) && (
-                  <StreamingBubble content={streamingContent} />
+                {streamingContent !== null && (
+                  <StreamingBubble key="streaming-bubble" content={streamingContent} />
                 )}
               </AnimatePresence>
               <div ref={messagesEndRef} />

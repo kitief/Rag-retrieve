@@ -1,7 +1,15 @@
 """
-ChromaDB HTTP client wrapper.
+ChromaDB client wrapper.
 Provides collection management, chunk storage, querying, and deletion.
-All calls go to the ChromaDB HTTP server running in Docker.
+
+Two backends are supported (see ``CHROMA_MODE``):
+
+* ``server`` — the ChromaDB HTTP container from ``docker-compose.yml``. The
+  client probes ``/heartbeat`` and silently falls back to the embedded store if
+  the container is not reachable.
+* ``embedded`` — ``PersistentClient`` on ``chroma_persist_dir``, which is what
+  the desktop build uses. The heartbeat probe is skipped entirely: in a
+  single-process app it can only ever fail and would cost 1-2s of startup.
 """
 import logging
 from functools import lru_cache
@@ -17,12 +25,22 @@ logger = logging.getLogger(__name__)
 def get_chroma_client() -> chromadb.ClientAPI:
     """
     Return a ChromaDB client.
-    Tries HTTP server first if running in Docker with standalone Chroma container.
-    Falls back to embedded PersistentClient if HTTP server is not reachable.
+
+    ``chroma_mode == "embedded"`` goes straight to ``PersistentClient``.
+    Otherwise the HTTP server is tried first and the embedded store is used as
+    a fallback when the container is unreachable.
     """
     from app.config import get_settings
 
     cfg = get_settings()
+
+    if cfg.chroma_mode == "embedded":
+        logger.info("Using embedded ChromaDB PersistentClient at %s", cfg.chroma_persist_dir)
+        return chromadb.PersistentClient(
+            path=cfg.chroma_persist_dir,
+            settings=Settings(anonymized_telemetry=False),
+        )
+
     try:
         logger.info("Connecting to ChromaDB HTTP server at %s:%s", cfg.chroma_host, cfg.chroma_port)
         client = chromadb.HttpClient(

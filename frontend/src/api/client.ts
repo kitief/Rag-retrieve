@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '@/store/authStore'
 import { activeLanguage } from '@/i18n'
+import { localAuthHeaders } from '@/lib/desktop'
 
 const api = axios.create({
   baseURL: '/api',
@@ -18,6 +19,9 @@ api.interceptors.request.use((config) => {
   // The API answers (and generates) in the language the user is reading the UI
   // in, so validation errors and AI output always match the interface.
   config.headers['X-App-Language'] = activeLanguage()
+  // Desktop build only: prove we are the window the shell spawned, not a random
+  // page that guessed the port. No-op under nginx.
+  Object.assign(config.headers, localAuthHeaders())
   return config
 })
 
@@ -39,7 +43,12 @@ api.interceptors.response.use(
         const res = await axios.post(
           '/api/auth/refresh',
           { refresh_token: tokens.refresh_token },
-          { headers: { 'X-App-Language': activeLanguage() } },
+          {
+            headers: {
+              'X-App-Language': activeLanguage(),
+              ...localAuthHeaders(),
+            },
+          },
         )
 
         const newTokens = res.data

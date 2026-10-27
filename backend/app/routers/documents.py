@@ -24,8 +24,15 @@ from app.utils.chroma_client import delete_document_chunks
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chats", tags=["Documents"])
 
-# 2 GB upload limit
+# Hard cap for a single upload. The desktop build lowers it through
+# MAX_UPLOAD_BYTES so a laptop cannot be pushed into swap by one huge file.
 MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024
+
+
+def _max_upload_bytes() -> int:
+    from app.config import get_settings
+
+    return get_settings().max_upload_bytes
 
 
 def _to_uuid(val: str | UUID) -> UUID:
@@ -60,6 +67,22 @@ async def _background_ingest(
 
     cfg = get_settings()
     engine = create_async_engine(cfg.database_url, echo=False)
+
+    if cfg.database_url.startswith("sqlite"):
+        # SQLite serialises writers; several uploads landing at once would
+        # otherwise surface as "database is locked" halfway through ingestion.
+        from sqlalchemy import event
+
+        @event.listens_for(engine.sync_engine, "connect")
+        def _set_pragmas(dbapi_connection, _record):
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=5000")
+                cursor.execute("PRAGMA foreign_keys=ON")
+            finally:
+                cursor.close()
+
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with AsyncSessionLocal() as session:
@@ -119,10 +142,11 @@ async def upload_document(
     temp_path = os.path.join(cfg.upload_temp_dir, temp_filename)
 
     file_size = 0
+    max_bytes = _max_upload_bytes()
     async with aiofiles.open(temp_path, "wb") as out_file:
         while content := await file.read(1024 * 1024):  # 1MB chunks
             file_size += len(content)
-            if file_size > MAX_FILE_SIZE:
+            if file_size > max_bytes:
                 if os.path.exists(temp_path):
                     os.unlink(temp_path)
                 raise HTTPException(

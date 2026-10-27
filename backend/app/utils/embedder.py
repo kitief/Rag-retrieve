@@ -4,12 +4,24 @@ Loads BAAI/bge-small-en-v1.5 (or configured model) as a singleton
 and provides high-speed batch + single-text embedding functions without PyTorch overhead.
 """
 import logging
+import os
 from functools import lru_cache
-from typing import Any
+from pathlib import Path
 
 from fastembed import TextEmbedding
 
 logger = logging.getLogger(__name__)
+
+
+def _model_present(cache_dir: str) -> bool:
+    """True when the HuggingFace cache already holds a downloaded model."""
+    try:
+        root = Path(cache_dir)
+    except (OSError, ValueError):  # pragma: no cover - defensive
+        return False
+    if not root.is_dir():
+        return False
+    return any(entry.is_dir() and entry.name.startswith("models--") for entry in root.iterdir())
 
 
 @lru_cache(maxsize=1)
@@ -17,11 +29,21 @@ def get_embedding_model() -> TextEmbedding:
     """
     Load and cache the FastEmbed ONNX embedding model.
     Called once at startup / first embed; subsequent calls return the cached instance.
-    Model weights are downloaded on first run to cache_dir, then loaded locally offline.
+
+    When the cache directory already contains a downloaded model (the desktop
+    build ships one inside the installer) HuggingFace is put in offline mode, so
+    a machine without connectivity never waits on a network probe that can only
+    time out — and, more importantly, never silently downloads a *different*
+    model than the one the installer was built with.
     """
     from app.config import get_settings
 
     cfg = get_settings()
+
+    if _model_present(cfg.hf_home) and not os.environ.get("HF_HUB_OFFLINE"):
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        logger.info("Embedding cache at %s is pre-populated — running in offline mode.", cfg.hf_home)
+
     logger.info("Loading FastEmbed embedding model: %s", cfg.embedding_model)
     model = TextEmbedding(
         model_name=cfg.embedding_model,

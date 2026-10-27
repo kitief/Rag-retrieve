@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey, Integer
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Uuid
 from sqlalchemy.orm import relationship
 from sqlalchemy import CheckConstraint
 import uuid
@@ -8,8 +8,8 @@ from app.database import Base
 
 class Document(Base):
     __tablename__ = "documents"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    chat_id = Column(UUID(as_uuid=True), ForeignKey("chats.id"), nullable=False)
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    chat_id = Column(Uuid(as_uuid=True), ForeignKey("chats.id"), nullable=False)
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False)
     upload_time = Column(DateTime, default=datetime.utcnow)

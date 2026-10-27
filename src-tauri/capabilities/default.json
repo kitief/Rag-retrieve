@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Default capability for the RagVault window. The shell does all privileged work in Rust, so the webview needs almost nothing.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

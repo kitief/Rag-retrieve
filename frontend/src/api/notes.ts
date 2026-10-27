@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import api from './client'
 import type { NotesResponse } from '@/types'
+import { saveFile } from '@/lib/desktop'
 
 export const useNotes = (chatId?: string) => {
   return useQuery({
@@ -35,16 +36,9 @@ export const useGenerateNotes = (chatId: string) => {
   })
 }
 
-export const downloadNotesPdf = async (chatId: string): Promise<void> => {
+export const downloadNotesPdf = async (chatId: string): Promise<string | null> => {
   const res = await api.get(`/chats/${chatId}/notes/pdf`, { responseType: 'blob' })
-  const url = URL.createObjectURL(res.data)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `ragvault-notes-${chatId}.pdf`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  return saveFile(res.data, `ragvault-notes-${chatId}.pdf`)
 }
 
 export const useRemedialNotes = (chatId?: string) => {
@@ -80,14 +74,7 @@ export const useGenerateRemedialNotes = (chatId: string) => {
   })
 }
 
-export const downloadRemedialNotesPdf = async (chatId: string): Promise<void> => {
+export const downloadRemedialNotesPdf = async (chatId: string): Promise<string | null> => {
   const res = await api.get(`/chats/${chatId}/quiz-remedial-notes/pdf`, { responseType: 'blob' })
-  const url = URL.createObjectURL(res.data)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `ragvault-quiz-remedial-${chatId}.pdf`
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  return saveFile(res.data, `ragvault-quiz-remedial-${chatId}.pdf`)
 }

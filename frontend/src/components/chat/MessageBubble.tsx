@@ -59,6 +59,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
+      data-message-id={message.id}
+      data-message-role={message.role}
       className={`flex gap-3 mb-4 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
     >
       {/* Avatar */}
