@@ -162,6 +162,48 @@ def configure_environment(args: argparse.Namespace) -> None:
         )
 
 
+def serve_with_reload(host: str, port: int, log_level: str, backend_root: Path) -> int:
+    """Run uvicorn's autoreloader (development only, never in the frozen build).
+
+    The reloader needs an import string rather than an app instance, and it
+    re-imports ``app.main`` in a child process, so every environment variable
+    set by :func:`configure_environment` must already be in place — it is,
+    because the child inherits our environment.
+
+    The port has to be fixed: the child binds the socket, so the parent cannot
+    discover a port chosen by the OS, and a ``RAGVAULT_READY`` line with a wrong
+    port is worse than none.
+    """
+    import uvicorn
+
+    if not port:
+        port = 8000
+        print(
+            "[run_desktop] --reload needs a fixed port; using 8000.",
+            flush=True,
+        )
+
+    print(f"{READY_PREFIX}{port}", flush=True)
+    print(f"[run_desktop] Open http://{host}:{port}/  (reload on file changes)", flush=True)
+
+    try:
+        uvicorn.run(
+            "app.main:app",
+            host=host,
+            port=port,
+            log_level=log_level.lower(),
+            access_log=False,
+            reload=True,
+            # Watch the backend only: the frontend has its own vite dev server,
+            # and `dist/` churn would restart the API on every build.
+            reload_dirs=[str(backend_root)],
+        )
+    except KeyboardInterrupt:
+        print("[run_desktop] interrupted", flush=True)
+        return 130
+    return 0
+
+
 async def serve(app, host: str, port: int, log_level: str) -> None:
     import uvicorn
 
@@ -225,6 +267,15 @@ def main(argv: list[str] | None = None, backend_root: Path | None = None) -> int
         sys.path.insert(0, str(backend_root))
 
     from app.config import get_settings
+
+    # Autoreload spawns its own process that imports ``app.main`` itself, so the
+    # parent must not import it: that would open the SQLite database twice and
+    # print the banner a second time.
+    if args.reload and not _is_frozen():
+        cfg = get_settings()
+        watch_root = backend_root or Path(__file__).resolve().parents[1]
+        return serve_with_reload(args.host, args.port, cfg.log_level, watch_root)
+
     from app.main import app  # noqa: WPS433 - import after env setup, by design
 
     cfg = get_settings()

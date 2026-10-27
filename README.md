@@ -333,22 +333,61 @@ APP_LANGUAGE=zh     # zh = 简体中文，en = English（默认）
 
 ## 🛠 开发环境搭建
 
-```bash
-# 后端（Python 3.11）
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
+改代码之前，先从三种运行方式里挑一个——它们的启动成本差别很大：
 
-# 前端（Node 20）
+| 方式 | 命令 | 适合 | 热重载 |
+| --- | --- | --- | --- |
+| **单进程 + Vite**（推荐） | `.\scripts\dev.ps1` | 日常改后端和前端 | 后端 + 前端都热重载 |
+| 桌面壳 | `npm run tauri dev` | 验证原生另存为、首启引导等壳内行为 | 无（改前端要重新 build） |
+| Docker Compose | `.\_setup\start.ps1` | 模拟线上四容器部署 | 后端 `--reload`，前端打进 nginx |
+
+### 首次准备
+
+```powershell
+# 后端依赖（一次性）
+python -m venv .venv-desktop
+.venv-desktop\Scripts\pip install -r backend\requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 前端依赖（一次性）
 cd frontend
-npm install
-npm run dev
+npm install --registry https://registry.npmmirror.com
 ```
 
-后端运行在 `http://localhost:8000`，前端运行在 `http://localhost:3000`（并通过代理指向后端）。
+### 日常开发：`scripts\dev.ps1`
+
+```powershell
+.\scripts\dev.ps1                 # API + Vite，两者都热重载
+.\scripts\dev.ps1 -BackendOnly    # 只跑 API（同时服务已构建的 SPA）
+.\scripts\dev.ps1 -NoReload       # 关掉热重载，调试断点时用
+.\scripts\dev.ps1 -Frozen         # 跑 PyInstaller 产物，和安装包里的二进制一致
+.\scripts\dev.ps1 -Stop           # 停掉所有相关进程
+```
+
+脚本会先把 API 拉到 `http://127.0.0.1:8000`（带 `--reload`，改 `backend/` 下任何文件自动重启），再起 Vite 到 `http://127.0.0.1:3000`，`/api` 通过 `vite.config.ts` 的代理转到后端。数据落在 `.desktop-data\`（SQLite + 嵌入式 Chroma），和 Docker 那套的 Postgres 完全隔开，互不污染。
+
+> 端口写死在 `vite.config.ts`（3000 和 8000），`-ApiPort` / `-WebPort` 只改后端监听、不改代理目标，脚本会给出警告。
+
+### 验证桌面壳
+
+```powershell
+# 必须在仓库根目录执行：tauri CLI 只向下搜索 tauri.conf.json，
+# 在 frontend\ 里跑会报 "Couldn't recognize the current folder as a Tauri project"
+.\frontend\node_modules\.bin\tauri dev      # 首次编译 Rust 约 2 分钟，之后增量
+```
+
+壳会自己拉起后端并注入 `RAGVAULT_LOCAL_TOKEN`，所以那些只在桌面端出现的行为（原生另存为对话框、首启引导弹窗、拖拽上传）必须在这里测，浏览器里看不到。
+
+改前端代码后 `tauri dev` 不会自动刷新——壳加载的是 `frontend\dist\` 的构建产物，要重新 `npm run build` 再重启壳。日常改 UI 用 `dev.ps1` 的 Vite 更快。
+
+### Docker 方式
+
+```powershell
+.\_setup\start.ps1            # 起四个容器
+.\_setup\start.ps1 -Logs      # 跟踪后端日志
+.\_setup\start.ps1 -Stop      # 停
+```
+
+四个容器分别是 Postgres、ChromaDB、后端、前端 nginx。应用在 `http://localhost:3000`，API 在 `http://localhost:8000`。
 
 ---
 

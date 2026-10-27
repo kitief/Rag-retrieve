@@ -338,22 +338,62 @@ Upload new documents to an existing chat — they accumulate in the knowledge ba
 
 ## 🛠 Development Setup
 
-```bash
-# Backend (Python 3.11)
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
+Pick one of three ways to run the app before writing code — they differ a lot in startup cost:
 
-# Frontend (Node 20)
+| Mode | Command | Best for | Hot reload |
+| --- | --- | --- | --- |
+| **Single process + Vite** (recommended) | `.\scripts\dev.ps1` | Day-to-day backend and frontend work | Both |
+| Desktop shell | `npm run tauri dev` | Native save dialog, first-run prompt, drag and drop | None — rebuild the frontend |
+| Docker Compose | `.\_setup\start.ps1` | Reproducing the four-container deployment | Backend `--reload`, frontend baked into nginx |
+
+### One-time setup
+
+```powershell
+# Backend dependencies
+python -m venv .venv-desktop
+.venv-desktop\Scripts\pip install -r backend\requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+# Frontend dependencies
 cd frontend
-npm install
-npm run dev
+npm install --registry https://registry.npmmirror.com
 ```
 
-Backend runs on `http://localhost:8000`, frontend on `http://localhost:3000` (with proxy to backend).
+### Daily work: `scripts\dev.ps1`
+
+```powershell
+.\scripts\dev.ps1                 # API + Vite, both hot reloading
+.\scripts\dev.ps1 -BackendOnly    # API only (also serves the built SPA)
+.\scripts\dev.ps1 -NoReload       # Disable reload; use when debugging with breakpoints
+.\scripts\dev.ps1 -Frozen         # Run the PyInstaller bundle — same binary as the installer
+.\scripts\dev.ps1 -Stop           # Stop every related process
+```
+
+The script brings the API up on `http://127.0.0.1:8000` with `--reload` (any change under `backend/` restarts it), then starts Vite on `http://127.0.0.1:3000`, where `/api` is proxied to the backend by `vite.config.ts`. Data goes to `.desktop-data\` (SQLite + embedded Chroma), fully separate from the Postgres used by the Docker stack.
+
+> The ports live in `vite.config.ts` (3000 and 8000). `-ApiPort` / `-WebPort` only change the backend listener, not the proxy target, and the script warns about it.
+
+### Testing the desktop shell
+
+```powershell
+# Run from the repository root: the tauri CLI only searches downwards for
+# tauri.conf.json, so running it inside frontend\ fails with
+# "Couldn't recognize the current folder as a Tauri project".
+.\frontend\node_modules\.bin\tauri dev      # ~2 min for the first Rust build
+```
+
+The shell starts the backend itself and injects `RAGVAULT_LOCAL_TOKEN`, so anything that only exists on the desktop side (native save dialog, first-run prompt, drag and drop) has to be tested here — a browser will never show it.
+
+`tauri dev` does not reload the frontend: the window loads the built bundle from `frontend\dist\`, so re-run `npm run build` and restart the shell. For everyday UI work the Vite server behind `dev.ps1` is much faster.
+
+### Docker mode
+
+```powershell
+.\_setup\start.ps1            # Start the four containers
+.\_setup\start.ps1 -Logs      # Follow backend logs
+.\_setup\start.ps1 -Stop      # Stop
+```
+
+That is Postgres, ChromaDB, the backend and the frontend nginx. The app is on `http://localhost:3000`, the API on `http://localhost:8000`.
 
 ---
 
