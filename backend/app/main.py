@@ -22,10 +22,10 @@ from app.routers.notes import router as notes_router
 from app.routers.settings import router as settings_router
 
 # Reported by /health and /config, and shown in the OpenAPI schema.
-API_VERSION = "1.3.0"
+API_VERSION = "2.1.0"
 
-# Written by the Tauri shell when it spawns this process. Empty in the Docker
-# deployment, which leaves the guard below disabled.
+# Written by the Tauri shell when it spawns this process; the guard below stays
+# disabled when it is empty (tests, a bare backend-only dev run).
 LOCAL_TOKEN = os.environ.get("RAGVAULT_LOCAL_TOKEN", "").strip()
 LOCAL_TOKEN_HEADER = b"x-ragvault-token"
 # Paths a browser can reach without the token: the readiness probe (used by the
@@ -74,14 +74,13 @@ async def lifespan(app: FastAPI):
     os.makedirs(cfg.upload_temp_dir, exist_ok=True)
     logger.info("Upload temp dir: %s", cfg.upload_temp_dir)
 
-    # Embedded (desktop) mode keeps every mutable path under one data directory.
-    if cfg.embedded:
-        logger.info(
-            "Embedded mode: data_dir=%s database=%s chroma=%s",
-            cfg.data_dir or os.getcwd(),
-            "sqlite" if cfg.is_sqlite else cfg.database_url.split("://", 1)[0],
-            cfg.chroma_mode,
-        )
+    # Every mutable path lives under one data directory (see app/config.py).
+    logger.info(
+        "Data directory: %s (database=%s, chroma=%s)",
+        cfg.data_dir or os.getcwd(),
+        cfg.database_url,
+        cfg.chroma_persist_dir,
+    )
 
     # Probe the configured cloud LLM in the background (never blocks startup).
     import asyncio
@@ -182,13 +181,11 @@ app.add_middleware(LanguageMiddleware)
 
 class DesktopLocalMiddleware:
     """
-    Make the single-process desktop build behave like the nginx deployment.
-
-    Two jobs, both no-ops outside desktop mode:
+    Two jobs:
 
     1. **Strip the ``/api`` prefix.** The SPA is hard-wired to ``baseURL: '/api'``
-       because nginx rewrites that prefix away. With nginx gone, the backend has
-       to do the rewriting itself, otherwise every request 404s.
+       (a leftover from the retired reverse-proxy setup). The backend does the
+       rewriting itself, otherwise every request 404s.
     2. **Require a local token.** A loopback HTTP server is reachable by any
        process — and by any web page the user happens to have open — so an
        unauthenticated ``POST /api/chats/x`` would let a random site delete the
@@ -270,7 +267,7 @@ app.include_router(settings_router)
 
 @app.get("/health", tags=["Health"])
 async def health() -> dict:
-    """Health check endpoint used by Docker Compose healthcheck."""
+    """Liveness probe. The Tauri shell polls this until the backend is ready."""
     return {"status": "ok", "version": API_VERSION}
 
 
@@ -279,8 +276,8 @@ async def client_config() -> dict:
     """
     Expose the non-secret runtime configuration the SPA needs.
 
-    The frontend fetches this on boot so a container-level ``APP_LANGUAGE``
-    really drives the first paint, before any user preference is stored.
+    The frontend fetches this on boot so ``APP_LANGUAGE`` really drives the
+    first paint, before any user preference is stored.
     """
     return {
         "default_language": i18n.configured_language(),
@@ -288,12 +285,11 @@ async def client_config() -> dict:
         "active_language": i18n.current_language(),
         "audio_video_enabled": get_settings().enable_audio_video_uploads,
         "ocr_enabled": get_settings().enable_ocr_uploads,
-        "embedded": get_settings().embedded,
         "version": API_VERSION,
     }
 
 
-# ─── Static SPA (desktop mode) ────────────────────────────────────────────────
+# ─── Static SPA ───────────────────────────────────────────────────────────────
 # Registered last so it never shadows a real route. A no-op unless WEB_DIST_DIR
-# points at a build (the Docker deployment leaves it unset).
+# points at a build (the desktop launcher always sets it).
 mount_spa(app, get_settings().web_dist_dir, token=LOCAL_TOKEN or None)

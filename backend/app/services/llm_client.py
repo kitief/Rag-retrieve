@@ -197,7 +197,7 @@ def _ensure_configured(resolved: ResolvedLLMConfig) -> None:
         hint = f" Get a key at {preset.docs_url}." if preset and preset.docs_url else ""
         raise LLMConfigurationError(
             "LLM_API_KEY is empty, so no request can be authorized." + hint
-            + " After adding the key, restart the backend container."
+            + " Add it in Settings and try again."
         )
 
 
@@ -434,11 +434,31 @@ async def list_models(timeout: float = 20.0) -> list[str]:
             "LLM endpoint is not configured. Set LLM_BASE_URL (or pick a known "
             "LLM_PROVIDER such as 'deepseek')."
         )
+    return await fetch_models(
+        resolved.base_url, resolved.api_key, timeout=timeout
+    )
 
-    url = f"{resolved.base_url.rstrip('/')}/models"
+
+async def fetch_models(
+    base_url: str,
+    api_key: str,
+    *,
+    timeout: float = 20.0,
+) -> list[str]:
+    """
+    List the models served by an explicit endpoint + key.
+
+    Split out of :func:`list_models` so the settings dialog can probe the
+    credentials currently typed into the form, before anything is saved.
+    """
+    url = f"{base_url.rstrip('/')}/models"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+    }
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, headers=_headers(resolved))
+            response = await client.get(url, headers=headers)
     except httpx.HTTPError as exc:
         raise LLMRequestError(f"Could not reach the model list at {url}: {exc}") from exc
 

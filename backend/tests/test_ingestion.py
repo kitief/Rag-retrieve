@@ -1,8 +1,8 @@
 """
 Document ingestion tests: file type validation.
 Tests that the /chats/{chat_id}/documents endpoint correctly:
-  - Accepts PDF, PPTX, MP4, MP3
-  - Rejects DOCX, PNG, XLS with 422 and a helpful error message
+  - Accepts PDF, PPTX, DOCX/DOC, MD, TXT, CSV/TSV
+  - Rejects PNG with 422 and a helpful error message
 """
 import io
 import pytest
@@ -15,26 +15,76 @@ def fake_file_content():
     return b"fake file content for testing"
 
 
-@pytest.mark.asyncio
-async def test_upload_docx_rejected(client: AsyncClient, auth_headers: dict, fake_file_content: bytes):
-    """DOCX files must be rejected with 422 Unprocessable Entity."""
-    # First create a chat
-    chat_resp = await client.post(
-        "/chats",
-        json={"title": "Test Chat"},
-        headers=auth_headers,
-    )
+async def _upload(client: AsyncClient, auth_headers: dict, filename: str,
+                  content_type: str, content: bytes, title: str):
+    """Create a chat, then upload one file with ingestion stubbed out."""
+    chat_resp = await client.post("/chats", json={"title": title}, headers=auth_headers)
     assert chat_resp.status_code == 201
     chat_id = chat_resp.json()["id"]
 
-    response = await client.post(
-        f"/chats/{chat_id}/documents",
-        headers=auth_headers,
-        files={"file": ("document.docx", io.BytesIO(fake_file_content), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    with patch("app.routers.documents._background_ingest", new_callable=AsyncMock):
+        return await client.post(
+            f"/chats/{chat_id}/documents",
+            headers=auth_headers,
+            files={"file": (filename, io.BytesIO(content), content_type)},
+        )
+
+
+@pytest.mark.asyncio
+async def test_upload_docx_accepted(client: AsyncClient, auth_headers: dict, fake_file_content: bytes):
+    """DOCX files must be accepted (returns 202 Accepted)."""
+    response = await _upload(
+        client, auth_headers,
+        "document.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        fake_file_content, "DOCX Chat",
     )
-    assert response.status_code == 422
-    detail = response.json()["detail"].lower()
-    assert "not supported" in detail or "docx" in detail
+    assert response.status_code == 202
+    # The API stores the extension without the leading dot (documents.py:164).
+    assert response.json()["file_type"] == "docx"
+
+
+@pytest.mark.asyncio
+async def test_upload_legacy_doc_accepted(client: AsyncClient, auth_headers: dict, fake_file_content: bytes):
+    """Legacy binary .doc files must be accepted now that doc_legacy.py parses them."""
+    response = await _upload(
+        client, auth_headers, "report.doc", "application/msword",
+        fake_file_content, "DOC Chat",
+    )
+    assert response.status_code == 202
+    assert response.json()["file_type"] == "doc"
+
+
+@pytest.mark.asyncio
+async def test_upload_markdown_accepted(client: AsyncClient, auth_headers: dict, fake_file_content: bytes):
+    """Markdown files must be accepted (returns 202 Accepted)."""
+    response = await _upload(
+        client, auth_headers, "notes.md", "text/markdown",
+        fake_file_content, "MD Chat",
+    )
+    assert response.status_code == 202
+    assert response.json()["file_type"] == "md"
+
+
+@pytest.mark.asyncio
+async def test_upload_txt_accepted(client: AsyncClient, auth_headers: dict, fake_file_content: bytes):
+    """Plain text files must be accepted."""
+    response = await _upload(
+        client, auth_headers, "notes.txt", "text/plain",
+        fake_file_content, "TXT Chat",
+    )
+    assert response.status_code == 202
+    assert response.json()["file_type"] == "txt"
+
+
+@pytest.mark.asyncio
+async def test_upload_csv_accepted(client: AsyncClient, auth_headers: dict, fake_file_content: bytes):
+    """CSV files must be accepted."""
+    response = await _upload(
+        client, auth_headers, "scores.csv", "text/csv",
+        fake_file_content, "CSV Chat",
+    )
+    assert response.status_code == 202
+    assert response.json()["file_type"] == "csv"
 
 
 @pytest.mark.asyncio
@@ -83,7 +133,7 @@ async def test_upload_pptx_accepted(client: AsyncClient, auth_headers: dict, fak
             files={"file": ("slides.pptx", io.BytesIO(fake_file_content), "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
         )
     assert response.status_code == 202
-    assert response.json()["file_type"] == ".pptx"
+    assert response.json()["file_type"] == "pptx"
 
 
 @pytest.mark.asyncio

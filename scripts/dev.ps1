@@ -1,4 +1,14 @@
-# RagVault - local development without Docker
+# RagVault - local development
+#
+# EASIEST ENTRY POINT -- works regardless of PowerShell execution policy:
+#   scripts\dev.cmd                 (see dev.cmd: it re-launches this file with
+#   scripts\dev.cmd -BackendOnly     -ExecutionPolicy Bypass scoped to one child
+#   scripts\dev.cmd -NoReload        process, because unsigned local scripts are
+#   scripts\dev.cmd -Frozen          rejected on machines where RemoteSigned's
+#   scripts\dev.cmd -Stop            Authenticode check is broken or locked down)
+#
+# Calling this file directly only works when your policy permits unsigned local
+# scripts. If it does not, use dev.cmd or the explicit form below:
 #
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev.ps1
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev.ps1 -BackendOnly
@@ -6,10 +16,10 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev.ps1 -Frozen
 #   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev.ps1 -Stop
 #
-# Unlike the Docker Compose stack (four containers), this runs the whole product
-# as a single Python process -- the same process the Tauri shell spawns -- and
-# adds the Vite dev server on top for hot module replacement. SQLite and the
-# embedded Chroma store live under .desktop-data\ in the repository.
+# This runs the whole product as a single Python process -- the same process the
+# Tauri shell spawns -- and adds the Vite dev server on top for hot module
+# replacement. SQLite and the embedded Chroma store live under .desktop-data\
+# in the repository.
 #
 # Use it for day-to-day work on the Python backend and the React frontend. Use
 #   npm run tauri dev
@@ -19,6 +29,12 @@
 # NOTE: keep this file pure ASCII. Windows PowerShell 5.1 reads .ps1 files using
 # the system ANSI code page unless they carry a BOM, so non-ASCII characters in
 # string literals turn into mojibake at runtime.
+#
+# NOTE: [CmdletBinding()] makes an unrecognised switch a hard error. Without it
+# a script with a param() block silently swallows unknown arguments into $args,
+# so a typo like -BackendOnyl would quietly start the full two-server stack
+# instead of only the API.
+[CmdletBinding()]
 param(
     [switch]$BackendOnly,
     [switch]$NoReload,

@@ -18,67 +18,47 @@ All **answer generation** is delegated to a cloud LLM over an OpenAI-compatible 
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| Docker | 24.0+ | |
-| Docker Compose | 2.20+ | |
-| RAM | 8GB minimum | Postgres + Chroma + backend + frontend |
-| Disk | 3GB free | Python + Node images plus data volumes |
+| OS | Windows 10 1809+ / Windows 11 | Needs WebView2 (built into Win11; usually present on Win10 via Edge) |
+| RAM | 8GB minimum | Backend process + WebView2 + embedding model |
+| Disk | 1.5GB free | ~137 MiB installer, ~600 MB installed |
 | LLM API key | — | DeepSeek: https://platform.deepseek.com/api_keys |
 
-### 1. Clone & Configure
+### 1. Install
 
-```bash
-git clone https://github.com/kitief/Rag-retrieve.git
-cd Rag-retrieve
-cp .env.example .env
-```
+Download and double-click `RagVault_2.1.0_x64-setup.exe`. Installs per-user to
+`%LOCALAPPDATA%\RagVault` (no admin rights); user data lives in `%APPDATA%\RagVault`.
 
-Edit `.env` with at minimum:
-```bash
-POSTGRES_PASSWORD=your_strong_password
-JWT_SECRET=your_random_32_char_secret_here
-LLM_API_KEY=sk-...            # required — chat, quizzes, notes all need it
-LLM_PROVIDER=deepseek         # or: openai | custom
-```
+> **First run**: the installer is not code-signed, so SmartScreen will warn. Click "More info" →
+> "Run anyway", or right-click the installer → Properties → check "Unblock" before installing.
 
-If you use a non-DeepSeek provider, also set:
-```bash
-LLM_BASE_URL=https://your-endpoint/v1
-LLM_MODEL=your-model-name
-```
+### 2. Enter an API Key
 
-### 2. Start All Services
+The first launch shows a setup dialog — paste a DeepSeek (or any OpenAI-compatible) API key.
+You can change it later from the Settings dialog at the bottom of the sidebar. The key is stored
+only in the local SQLite database.
 
-```bash
-docker compose up -d
-```
-
-This starts **4 services**: `postgres`, `chromadb`, `backend`, `frontend`.
-There is no local model server and no GGUF download.
-
-### 3. Open the App
-
-```
-http://localhost:3000
-```
+### 3. Start Using It
 
 Register an account, create a Knowledge Space, upload documents, and start learning!
 
-> ⚠️ Internet is required at runtime for LLM inference (the provider API), and on first start to pull Docker images and the FastEmbed ONNX model.
+> ⚠️ Internet is required at runtime for LLM inference (the provider API). Embeddings are computed
+> locally, so only the retrieved snippets are sent to the provider.
+
+To build from source, see [Windows Desktop Build](#-windows-desktop-build) below.
 
 ---
 
 ## 🖥 Windows Desktop Build
 
-Besides Docker, this repository also ships a **Windows desktop app** that needs neither Docker nor a
-Python environment: install it, and the Tauri shell launches a PyInstaller-frozen FastAPI backend
-(SQLite + embedded Chroma) behind a native WebView2 window.
+RagVault **is** a Windows desktop app: double-click the icon and the Tauri shell launches a
+PyInstaller-frozen FastAPI backend (SQLite + embedded Chroma) behind a native WebView2 window.
+No Docker, no Python install, no browser.
 
-**Installer**: `src-tauri/target/release/bundle/nsis/RagVault_1.3.0_x64-setup.exe` (~137 MiB)
+**Installer**: `src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe` (~137 MiB)
 
-Installs per-user to `%LOCALAPPDATA%\RagVault` (no admin rights); user data lives in `%APPDATA%\RagVault`.
-
-> **First run**: the installer is not code-signed, so SmartScreen will warn. Click "More info" →
-> "Run anyway", or right-click the installer → Properties → check "Unblock" before installing.
+> That name is what a build **of this source** produces. If the repo only contains
+> `RagVault_1.3.0_x64-setup.exe`, that is the previous alpha — it predates the layered PDF
+> parsing and the persisted connection state described here.
 
 **Building from source** (needs the Rust MSVC toolchain, Python 3.11 and Node 20+):
 
@@ -97,26 +77,30 @@ frontend\node_modules\.bin\tauri build
 The full design trade-offs, pitfalls and acceptance checklist are in
 [docs/desktop-packaging.md](docs/desktop-packaging.md) (Chinese).
 
-Desktop vs. Docker:
+Runtime shape:
 
-| | Docker | Desktop |
-| --- | --- | --- |
-| Database | PostgreSQL | SQLite (WAL) |
-| Vector store | ChromaDB Server | Embedded Chroma (PersistentClient) |
-| Startup | `docker compose up -d` | Double-click the exe |
-| Data location | Docker volumes | `%APPDATA%\RagVault` |
-| Upload cap | 2 GB | 500 MB |
-| Access | Browser at `localhost:3000` | Native window |
+| | Desktop |
+| --- | --- |
+| Database | SQLite (WAL) |
+| Vector store | Embedded Chroma (PersistentClient) |
+| Startup | Double-click the exe |
+| Data location | `%APPDATA%\RagVault` |
+| Install location | `%LOCALAPPDATA%\RagVault` |
+| Upload cap | 500 MB |
+| Access | Native window (backend listens on loopback only) |
 
 ---
 
 ## 🏗 Architecture
 
 ```
-Browser (React + Vite)
+Tauri v2 shell (Rust)
+   │  generates RAGVAULT_LOCAL_TOKEN, spawns the backend, parses RAGVAULT_READY port=…
+   ▼
+WebView2 window (React + Vite, served by the backend)
    │  REST + SSE  │
    ▼               ▼
-FastAPI Backend (port 8000)
+FastAPI Backend (single Python process, bound to 127.0.0.1)
    ├── Auth (JWT)
    ├── Ingestion Service
    │    └── PDF/PPTX/Word/TXT/MD/Image/Video/Audio → Parse → Chunk → Embed → ChromaDB
@@ -129,8 +113,8 @@ FastAPI Backend (port 8000)
    └── Recommendation Service
         └── LangGraph → LLM → personalised Markdown study plan
    │
-   ├── PostgreSQL (users, chats, messages, documents, quizzes, notes)
-   ├── ChromaDB 0.5.18 (vector embeddings, per chat_id collection)
+   ├── SQLite (%APPDATA%\RagVault\ragvault.db — users, chats, messages, documents, quizzes, notes)
+   ├── Embedded ChromaDB 0.5.18 (%APPDATA%\RagVault\chroma, per chat_id collection)
    └── Cloud LLM (OpenAI-compatible Chat Completions API — DeepSeek by default)
 ```
 
@@ -157,7 +141,7 @@ boots and `/health` stays green).
 
 > The old local stack (`model-init` + `llm` llama.cpp services, `app/utils/ollama_helper.py`,
 > `app/services/llm_gate.py`, the LangChain `Ollama` clients) has been removed.
-> `scripts/setup_model.py` and `models/*.gguf` are no longer used by compose.
+> `scripts/setup_model.py` and `models/*.gguf` are no longer used.
 
 ---
 
@@ -166,17 +150,11 @@ boots and `/health` stays green).
 Everything the user reads — the web UI, validation errors, and the answers the
 model writes — can be switched between **English** and **Simplified Chinese**.
 
-### Deployment default
+### Built-in default
 
-Set `APP_LANGUAGE` in `.env` and restart the backend:
-
-```env
-APP_LANGUAGE=zh     # zh = 简体中文, en = English (default)
-```
-
-`docker-compose.yml` forwards it to the backend container. It is exposed to the
-browser by `GET /config` (`default_language`), so a fresh browser opening the app
-starts in that language.
+Tick `Use as deployment default` under Settings → Language, or set the `APP_LANGUAGE`
+environment variable (`zh` / `en`, default `en`). The value is exposed to the UI by
+`GET /config` (`default_language`), so a fresh install starts in that language.
 
 ### Per-visitor override
 
@@ -223,25 +201,96 @@ at the same time.
 
 | Type | Extensions | Status | Processing |
 |------|-----------|--------|------------|
-| PDF | `.pdf` | ✅ active | PyMuPDF page-by-page; scanned pages fall back to OCR only when `ENABLE_OCR_UPLOADS=true` |
+| PDF | `.pdf` | ✅ active | Layered pipeline: audit every page first, OCR only the bad ones (RapidOCR, models ship with the wheel); tables become Markdown |
 | PowerPoint | `.pptx` `.ppt` | ✅ active | python-pptx slide-by-slide; binary `.ppt` fallback via raw stream extraction |
-| Word | `.docx` `.doc` | 🅿️ shelved | python-docx / ZIP-XML fallback — parser kept, upload rejected |
-| Plain Text | `.txt` `.md` `.csv` | 🅿️ shelved | Direct read, split into ~2000-char pseudo-pages — parser kept |
+| Word (modern) | `.docx` | ✅ active | python-docx, body order preserved, tables flattened to `a \| b`; ZIP-XML fallback |
+| Word (legacy) | `.doc` | ✅ active | Pure-Python OLE2 + Word piece table (`app/utils/doc_legacy.py`); RTF/HTML mislabelled as `.doc` also handled |
+| Markdown | `.md` `.markdown` | ✅ active | Direct read, source kept verbatim (headings, lists, code fences), split into ~2000-char pseudo-pages |
+| Plain Text | `.txt` `.text` | ✅ active | Direct read with UTF-8 / GB18030 / UTF-16 fallback; blank-line paragraphs, per-line when a file has none |
+| Delimited | `.csv` `.tsv` | ✅ active | Row-aware pages — the header is repeated on every pseudo-page so a chunk still names its columns |
 | Image | `.png` `.jpg` `.jpeg` `.webp` `.bmp` `.tiff` | 🅿️ shelved | Tesseract OCR with contrast enhancement — needs `ENABLE_OCR_UPLOADS=true` |
 | Video | `.mp4` `.mkv` `.mov` `.avi` `.webm` | 🅿️ shelved | ffmpeg audio extract → Faster-Whisper — needs `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
 | Audio | `.mp3` `.wav` `.m4a` `.ogg` `.flac` `.aac` | 🅿️ shelved | Faster-Whisper (PyAV fallback) — needs `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
 
 > ❌ Anything outside the active set is rejected with a clear 422 error message.
-> 📦 Maximum upload size: **2 GB** per file.
+> 📦 Maximum upload size: **500 MB** per file.
+
+### Why `.doc` needs no extra dependency
+
+`python-docx` only opens the OOXML zip container, so it cannot read Word 97-2003
+files at all. The alternatives were all unattractive for a desktop app that ships
+as an offline PyInstaller bundle: `olefile` is another dependency to vendor,
+COM automation needs a licensed Word install on the target machine, and
+`textract`/`antiword` bring native binaries. `backend/app/utils/doc_legacy.py`
+therefore implements the two small, stable formats involved — the Compound File
+Binary container and the Word piece table — in about 400 lines of pure Python.
+Damaged or mislabelled files (RTF or HTML renamed to `.doc`, plain text with a
+Word extension) are detected and routed to a suitable fallback instead of
+failing the upload.
+
+### PDF: audit first, parse second
+
+Most "I uploaded a PDF and it cannot answer" reports are not a broken parser —
+the pages simply have no text layer. The page is one big scan, so PyMuPDF reads
+an empty string or a few dozen stray glyphs. The old implementation dropped such
+pages silently, so the document showed as *ready* while only a handful of
+fragments reached the index, and the model could only reply "not in your
+documents".
+
+`backend/app/utils/pdf_pipeline.py` splits this into two steps:
+
+1. **Audit** (fast, no OCR budget spent). Every page is measured for text volume,
+   image coverage, junk-character ratio and single-character lines, scored 0–1
+   for quality, then classified `digital` / `scanned` / `hybrid` / `blank` and
+   flagged `needs_ocr`. The decisive signal for a bad page is **a page-sized
+   image carrying almost no text** — the signature of a scan hiding a poor OCR
+   layer.
+2. **OCR on demand.** Only pages flagged `needs_ocr` are rasterised and read, and
+   preprocessing is a ladder (original → deskew → denoise+binarise → combined)
+   that stops at the first acceptable confidence, because binarising an already
+   clean page measurably hurts recognition.
+
+Pages that were skipped are **reported, not swallowed**: the document row carries
+a `parse_audit`, the list shows "OCR n pages" / "m pages unread" badges, and the
+dialog breaks that down per page with character count, OCR confidence and the
+preprocessing step used. "Why can't it answer" becomes inspectable instead of a
+guess.
+
+Two failure modes no longer pass silently either: a scanned file whose OCR is
+switched off (or whose machine has no OCR engine at all) now **fails the upload
+with a reason** instead of indexing zero chunks and reporting "ready", and the
+reason is stored on the document row as `error_message` and shown in the list.
+
+Three deliberate tradeoffs:
+
+- **No parallel OCR, but the thread count is capped.** onnxruntime opens one
+  thread per logical core by default, and on a loaded machine those threads fight
+  for cores: measured on the same pages, the library default took 12.4 s/page and
+  a cap of 8 took 7.5 s/page. A process pool measured a bit faster still
+  (6.1 s/page), but a packaged build would then need `freeze_support()` and a
+  controlled entry point, so the gain did not justify the risk. Long documents are
+  therefore bounded by `PDF_OCR_MAX_PAGES` and `PDF_OCR_TIME_BUDGET_SECONDS`, with
+  the thread count set by `PDF_OCR_THREADS`.
+- **A page with a real text layer is never OCRd.** The text layer is exact; OCR
+  could only be worse.
+- **300 DPI with the long edge capped at 1600 is enough.** At 400 DPI the
+  character count and confidence were identical — just slower.
+
+A 1400-page scanned book takes hours to OCR end to end (measured: 4.5s per page,
+about 107 minutes for 1439 pages). `PDF_OCR_MAX_PAGES` defaults to `0`
+(unlimited); for books like that, set it to a few hundred or upload in parts.
+When OCR is truncated the audit says how many pages were left unread, and
+questions about those pages still get an honest "not found" rather than an
+invented answer.
 
 ### Re-enabling a shelved parser
 
-The parsing code is *kept in full* at `backend/app/utils/parsers.py`; only the
-entry points are gated. To bring one back:
+Image OCR and audio/video transcription keep their code but stay gated. (PDF OCR
+is on by default, so it is not covered here.)
 
-1. set `ENABLE_OCR_UPLOADS=true` and/or `ENABLE_AUDIO_VIDEO_UPLOADS=true` in `.env`
-2. un-comment `pytesseract` / `faster-whisper` in `backend/requirements.txt`
-3. un-comment the `tesseract-ocr` / `ffmpeg` `apt-get` block in `backend/Dockerfile`
+1. un-comment `pytesseract` / `faster-whisper` in `backend/requirements.txt`
+2. install the system components: Tesseract-OCR (with the `chi_sim` language pack) and ffmpeg
+3. set `ENABLE_OCR_UPLOADS` / `ENABLE_AUDIO_VIDEO_UPLOADS` to true in `.env`
 4. (optional) add the extensions back to `SUPPORTED_EXTS` in
    `frontend/src/components/documents/DropZone.tsx`
 
@@ -258,12 +307,13 @@ entry points are gated. To bring one back:
 | LLM | **Cloud API** over OpenAI-compatible Chat Completions (DeepSeek by default) |
 | Default Model | `deepseek-chat` (configurable via `LLM_PROVIDER` / `LLM_MODEL`) |
 | Embeddings | **FastEmbed** (ONNX Runtime) — `BAAI/bge-small-en-v1.5` |
-| Vector DB | ChromaDB 0.5.18 (persistent local) |
-| Relational DB | PostgreSQL 16 |
+| Vector DB | ChromaDB 0.5.18 (embedded `PersistentClient`) |
+| Relational DB | SQLite (WAL mode) |
+| Desktop shell | Tauri v2 (Rust) + WebView2 |
+| Packaging | PyInstaller (backend) + NSIS (installer) |
 | Speech-to-Text | *Shelved* — Faster-Whisper code kept, disabled by default |
-| OCR | *Shelved* — Tesseract code kept, disabled by default |
+| OCR | **RapidOCR** (ONNX export of PaddleOCR) — PDF scans only, on demand |
 | Auth | JWT (access + refresh tokens), bcrypt |
-| Deployment | Docker + Docker Compose |
 
 No deviations from the specified stack were made.
 
@@ -271,27 +321,40 @@ No deviations from the specified stack were made.
 
 ## ⚙️ Configuration
 
-All configuration is in `.env`. Key variables:
+Day-to-day use needs no configuration file at all — the API key, language and model live in
+the in-app Settings dialog and are stored in `%APPDATA%\RagVault\ragvault.db`. The environment
+variables below are only the built-in defaults, overridable from `.env` during development
+(see `.env.example`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LLM_PROVIDER` | `deepseek` | `deepseek` / `openai` / `custom` |
-| `LLM_API_KEY` | *(must set)* | Provider API key — chat, quizzes, notes, titles all need it |
+| `LLM_API_KEY` | *(empty)* | Provider API key — leave blank and enter it in the app |
 | `LLM_MODEL` | `deepseek-chat` | Model identifier sent to the provider |
 | `LLM_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI-compatible base URL (overrides the preset) |
 | `LLM_TIMEOUT_SECONDS` | `180` | Per-request timeout |
 | `LLM_MAX_RETRIES` | `3` | Retries on 429 / 5xx / transport errors |
-| `APP_LANGUAGE` | `en` | Deployment default UI + AI language (`en` / `zh`) |
+| `APP_LANGUAGE` | `en` | Built-in default UI + AI language (`en` / `zh`) |
 | `ENABLE_AUDIO_VIDEO_UPLOADS` | `false` | Shelved audio/video transcription |
-| `ENABLE_OCR_UPLOADS` | `false` | Shelved image / scanned-PDF OCR |
+| `ENABLE_OCR_UPLOADS` | `true` | OCR for PDF scans; also unlocks the shelved image OCR |
+| `PDF_OCR_ENGINE` | `auto` | `auto` / `rapidocr` / `tesseract` — `auto` prefers RapidOCR |
+| `PDF_OCR_DPI` | `300` | Rasterisation DPI; higher does not improve accuracy, only cost |
+| `PDF_OCR_MAX_SIDE` | `1600` | Long-edge cap on the rendered image, to bound CPU |
+| `PDF_OCR_MAX_PAGES` | `0` | Max pages OCRd per document (`0` = unlimited); keep it small for long scans |
+| `PDF_OCR_TIME_BUDGET_SECONDS` | `1800` | Per-document OCR budget; on expiry OCR stops and unread pages are recorded |
+| `PDF_OCR_MIN_CONFIDENCE` | `0.75` | Pages below this are flagged low-confidence for review |
+| `PDF_OCR_MAX_ATTEMPTS` | `3` | Preprocessing ladder depth (original → deskew → binarise → combined) |
+| `PDF_OCR_THREADS` | `8` | ONNX threads for OCR. Measured: library default (one per core) 12.4 s/page, capped at 8 → 7.5 s/page; `0` hands the choice back to the library |
+| `PDF_MIN_TEXT_CHARS` | `200` | A page-sized image with less text than this is treated as needing OCR |
+| `PDF_EXTRACT_TABLES` | `true` | Convert PDF tables to Markdown and index them too |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | FastEmbed ONNX embedding model |
 | `WHISPER_MODEL` | `base` | Only used if audio/video is re-enabled |
 | `CHUNK_SIZE` | `600` | Target tokens per chunk |
 | `CHUNK_OVERLAP` | `100` | Token overlap between chunks |
 | `TOP_K` | `5` | Number of chunks to retrieve per query |
 | `WHISPER_DEVICE` | `cpu` | Set to `cuda` if GPU available |
-| `POSTGRES_PASSWORD` | *(must set)* | PostgreSQL password |
-| `JWT_SECRET` | *(must set)* | Random 32+ char string for JWT signing |
+| `DATA_DIR` | `%APPDATA%\RagVault` | Root for all mutable data (DB, vectors, uploads, model cache) |
+| `JWT_SECRET` | *(built-in default)* | Random 32+ char string for JWT signing |
 
 ---
 
@@ -338,13 +401,12 @@ Upload new documents to an existing chat — they accumulate in the knowledge ba
 
 ## 🛠 Development Setup
 
-Pick one of three ways to run the app before writing code — they differ a lot in startup cost:
+Pick one of two ways to run the app before writing code — they differ a lot in startup cost:
 
 | Mode | Command | Best for | Hot reload |
 | --- | --- | --- | --- |
-| **Single process + Vite** (recommended) | `.\scripts\dev.ps1` | Day-to-day backend and frontend work | Both |
+| **Single process + Vite** (recommended) | `.\scripts\dev.cmd` | Day-to-day backend and frontend work | Both |
 | Desktop shell | `npm run tauri dev` | Native save dialog, first-run prompt, drag and drop | None — rebuild the frontend |
-| Docker Compose | `.\_setup\start.ps1` | Reproducing the four-container deployment | Backend `--reload`, frontend baked into nginx |
 
 ### One-time setup
 
@@ -358,17 +420,36 @@ cd frontend
 npm install --registry https://registry.npmmirror.com
 ```
 
-### Daily work: `scripts\dev.ps1`
+### Daily work: `scripts\dev.cmd`
 
 ```powershell
-.\scripts\dev.ps1                 # API + Vite, both hot reloading
-.\scripts\dev.ps1 -BackendOnly    # API only (also serves the built SPA)
-.\scripts\dev.ps1 -NoReload       # Disable reload; use when debugging with breakpoints
-.\scripts\dev.ps1 -Frozen         # Run the PyInstaller bundle — same binary as the installer
-.\scripts\dev.ps1 -Stop           # Stop every related process
+.\scripts\dev.cmd                 # API + Vite, both hot reloading
+.\scripts\dev.cmd -BackendOnly    # API only (also serves the built SPA)
+.\scripts\dev.cmd -NoReload       # Disable reload; use when debugging with breakpoints
+.\scripts\dev.cmd -Frozen         # Run the PyInstaller bundle — same binary as the installer
+.\scripts\dev.cmd -Stop           # Stop every related process
 ```
 
-The script brings the API up on `http://127.0.0.1:8000` with `--reload` (any change under `backend/` restarts it), then starts Vite on `http://127.0.0.1:3000`, where `/api` is proxied to the backend by `vite.config.ts`. Data goes to `.desktop-data\` (SQLite + embedded Chroma), fully separate from the Postgres used by the Docker stack.
+The script brings the API up on `http://127.0.0.1:8000` with `--reload` (any change under `backend/` restarts it), then starts Vite on `http://127.0.0.1:3000`, where `/api` is proxied to the backend by `vite.config.ts`. Data goes to `.desktop-data\` (SQLite + embedded Chroma), completely separate from the installed app's data in `%APPDATA%\RagVault`.
+
+> **Why the entry point is `.cmd` and not `.ps1`**
+>
+> `dev.ps1` is not code-signed. Under the default `RemoteSigned` policy a locally
+> authored script is normally allowed to run — but if the Authenticode
+> verification path is restricted by security software or group policy, invoking
+> `.\scripts\dev.ps1` directly fails with "not digitally signed" or
+> "AuthorizationManager check failed".
+>
+> `dev.cmd` is not a PowerShell script, so the execution policy never applies to
+> it. It re-launches `dev.ps1` with `-ExecutionPolicy Bypass` **scoped to that
+> single child process** — no registry key is written, no machine-wide setting
+> changes, and the policy reverts as soon as the child exits. Arguments are
+> forwarded verbatim, so both files are used identically.
+>
+> To relax the policy permanently instead (optional, admin required):
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` — though on a locked-down
+> machine that usually will not take effect either, which is why `dev.cmd` is the
+> simpler route.
 
 > The ports live in `vite.config.ts` (3000 and 8000). `-ApiPort` / `-WebPort` only change the backend listener, not the proxy target, and the script warns about it.
 
@@ -385,16 +466,6 @@ The shell starts the backend itself and injects `RAGVAULT_LOCAL_TOKEN`, so anyth
 
 `tauri dev` does not reload the frontend: the window loads the built bundle from `frontend\dist\`, so re-run `npm run build` and restart the shell. For everyday UI work the Vite server behind `dev.ps1` is much faster.
 
-### Docker mode
-
-```powershell
-.\_setup\start.ps1            # Start the four containers
-.\_setup\start.ps1 -Logs      # Follow backend logs
-.\_setup\start.ps1 -Stop      # Stop
-```
-
-That is Postgres, ChromaDB, the backend and the frontend nginx. The app is on `http://localhost:3000`, the API on `http://localhost:8000`.
-
 ---
 
 ## ⚙️ In-App Settings
@@ -405,7 +476,11 @@ settings dialog. It has two groups:
 | Group | What it does |
 | --- | --- |
 | **Language** | Switches the interface, validation messages and AI answers between English and 中文 for the current browser. `Use as deployment default` also stores the choice as the default for new visitors. |
-| **API** | Picks a provider from a dropdown (DeepSeek / OpenAI / any OpenAI-compatible endpoint), then sets the API key, base URL and model. The model field is a dropdown populated from the endpoint's `GET /v1/models`, with a manual-entry escape hatch. `Test connection` probes the endpoint without saving. |
+| **API** | Pick a provider (DeepSeek / OpenAI / any OpenAI-compatible endpoint), fill in the base URL and the API key, then press **Connect**. Connecting probes `GET /v1/models` with the credentials currently in the form and only then unlocks the model field, pre-filling it with the first model the endpoint advertises. Until a probe succeeds the model field stays empty and the status strip is red; a successful probe turns it green. Keys can be pasted straight into the input, and the key menu beside it saves, switches and deletes stored credentials. |
+
+**The connection state persists.** The probe result — whether it succeeded, the model list, and a fingerprint of the endpoint and key it was measured against — lives in the `llm_connection` row of `app_settings`, so closing and reopening the dialog restores the same green badge and model list instead of asking you to prove again what the backend already knows. The secret itself is never written to that row; only a masked hint like `sk-…128e`.
+
+A green badge does not stay green forever. As soon as the base URL, the provider or the key differs from what was measured, the API marks the record `stale`, the UI treats it as "not connected" and shows red. Editing the configuration without re-probing never leaves a stale green light behind. Below the theme toggle in the sidebar there is also a connection shortcut: green means the current configuration works (it shows the model in use), red means there is no working connection, and clicking it jumps straight to the API panel.
 
 ### Saved API keys
 
@@ -423,23 +498,23 @@ so the request path stays a single dict lookup. Keys are write-only over the API
 responses only ever contain a masked hint such as `sk-…1a2b`.
 
 Values are stored in the `app_settings` table, so they **survive restarts and
-override the matching `.env` entries** — no image rebuild is needed. Only the
-retrieved document snippets are sent to the provider; embeddings stay local.
+override the built-in defaults** — no file edit is needed. Only the retrieved
+document snippets are sent to the provider; embeddings stay local.
 
 `Restore defaults` in the dialog footer deletes every stored override so the
-`.env` configuration applies again.
+built-in defaults apply again.
 
 ---
 
 ## 🧪 Running Tests
 
-The test suite is not part of the runtime image, so install the extra
+The test suite is not part of the runtime artifacts, so install the extra
 dependencies first:
 
 ```bash
 # Backend tests
 cd backend
-pip install pytest pytest-asyncio aiosqlite
+pip install -r requirements-dev.txt
 pytest tests/ -v --tb=short
 
 # Frontend lint
@@ -447,41 +522,26 @@ cd frontend
 npm run lint
 ```
 
-The fixture in `backend/tests/conftest.py` uses in-memory SQLite, so no
-PostgreSQL or ChromaDB instance is required.
+The fixture in `backend/tests/conftest.py` uses in-memory SQLite, so no external
+service is required.
 
 ---
 
-## 🔧 Service Management
+## 🔧 Running & Troubleshooting
 
-```bash
-# View logs
-docker compose logs -f backend
+Desktop logs are forwarded by the Tauri shell to the console that launched it; during
+development, `scripts\dev.cmd` shows the backend output directly.
 
-# Restart a service
-docker compose restart backend
+```powershell
+.\scripts\dev.cmd -Stop     # Stop every related process (backend + Vite)
 
-# Full teardown (preserves data volumes)
-docker compose down
-
-# Full teardown + delete all data
-docker compose down -v
+# Data directory (delete to factory-reset)
+Remove-Item -Recurse "$env:APPDATA\RagVault"
 ```
-
-### Optional: Nginx Reverse Proxy
-
-An Nginx service is defined in `docker-compose.yml` but gated behind a Docker Compose profile. To enable it:
-
-```bash
-docker compose --profile nginx up -d
-```
-
-Nginx will serve on port 80 and proxy to both backend and frontend.
 
 ---
 
 ## 📊 API Reference
-
 The API is documented at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc` after startup.
 
 **Core endpoints:**
@@ -521,31 +581,39 @@ The API is documented at `http://localhost:8000/docs` (Swagger UI) and `http://l
 
 ```
 RagVault/
-├── frontend/               # React + Vite + TypeScript
+├── frontend/               # React + Vite + TypeScript (build output served by the backend)
 │   ├── src/
 │   │   ├── api/            # TanStack Query hooks
 │   │   ├── components/     # UI components (shadcn/ui + custom)
 │   │   ├── pages/          # Route pages
 │   │   ├── store/          # Zustand stores
 │   │   ├── types/          # TypeScript types
+│   │   ├── lib/desktop.ts  # Local API token / native save dialog
 │   │   └── theme.ts        # Design system tokens
-│   ├── nginx.conf          # Production Nginx config for the frontend container
-│   └── Dockerfile
-├── backend/                # FastAPI application
+│   └── vite.config.ts
+├── backend/                # FastAPI application (single process, also serves the SPA)
 │   ├── app/
 │   │   ├── models/         # SQLAlchemy ORM (user, chat, document, message, quiz, note, memory)
 │   │   ├── schemas/        # Pydantic schemas
 │   │   ├── routers/        # FastAPI routers (auth, chats, documents, messages, quiz, notes)
 │   │   ├── services/       # Business logic (rag, quiz, notes, ingestion, recommendation, auth)
 │   │   ├── utils/          # Parsers, chunker, FastEmbed embedder, ChromaDB client
-│   │   └── core/           # Auth dependencies, security
-│   ├── alembic/            # DB migrations
-│   └── Dockerfile          # python:3.11-slim + Tesseract + ffmpeg
-├── models/                 # Legacy GGUF dir (no longer used by docker-compose)
-├── docker/
-│   └── nginx.conf          # Nginx reverse proxy config (optional profile)
-├── docker-compose.yml      # 4 services (postgres, chromadb, backend, frontend)
-└── .env.example            # Config template
+│   │   ├── core/           # Auth dependencies, security, i18n, SPA hosting
+│   │   ├── desktop_boot.py # Desktop launcher: data dir, port, RAGVAULT_READY
+│   │   └── main.py
+│   ├── tests/              # pytest (in-memory SQLite)
+│   └── ragvault-backend.spec   # PyInstaller build config
+├── src-tauri/              # Tauri v2 shell (Rust)
+│   ├── src/
+│   ├── tauri.conf.json
+│   └── Cargo.toml
+├── scripts/
+│   ├── dev.cmd             # Day-to-day entry point (bypasses script policy)
+│   ├── dev.ps1             # Actual startup logic: backend + Vite
+│   ├── run_desktop.py      # Single-process entry point
+│   └── prepare_embedded_models.py
+├── docs/desktop-packaging.md
+└── .env.example            # Development only — the installer reads no env file
 ```
 
 ---

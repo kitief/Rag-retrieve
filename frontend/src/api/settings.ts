@@ -24,6 +24,22 @@ export interface LanguageSettings {
   source: string
 }
 
+export interface ConnectionState {
+  ok: boolean
+  message: string
+  provider: string
+  base_url: string
+  models: string[]
+  checked_at: string | null
+  /**
+   * True when the saved provider/base URL/key no longer match what was probed.
+   * The badge treats a stale probe as "not connected" so an old green light
+   * cannot outlive an edit.
+   */
+  stale: boolean
+  key_hint: string
+}
+
 export interface LLMSettings {
   provider: string
   base_url: string
@@ -33,6 +49,8 @@ export interface LLMSettings {
   timeout_seconds: number
   max_retries: number
   max_concurrency: number
+  /** Last probe, persisted server-side so it survives closing the dialog. */
+  connection: ConnectionState | null
 }
 
 export interface SettingsResponse {
@@ -68,6 +86,22 @@ export interface ApiKeyUpdate {
 export interface ModelsResponse {
   models: string[]
   base_url: string
+  source: string
+}
+
+/** Credentials typed into the dialog, probed without being saved. */
+export interface ConnectRequest {
+  llm_provider?: string | null
+  llm_base_url?: string | null
+  llm_api_key?: string | null
+}
+
+export interface ConnectResponse {
+  ok: boolean
+  message: string
+  provider: string
+  base_url: string
+  models: string[]
   source: string
 }
 
@@ -133,6 +167,9 @@ export function useUpdateSettings() {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(settingsKeys.all, data)
+      // The sidebar badge reads the connection from this same payload, so the
+      // connect result has to reach it without waiting out the stale time.
+      void queryClient.invalidateQueries({ queryKey: settingsKeys.all })
     },
   })
 }
@@ -155,6 +192,30 @@ export function useTestLlm() {
     mutationFn: async (payload: SettingsUpdate) => {
       const { data } = await api.post<SettingsTestResponse>('/settings/llm/test', payload)
       return data
+    },
+  })
+}
+
+/**
+ * Probe the endpoint with the credentials currently in the form.
+ *
+ * This is the "Connect" button behind the model dropdown: besides reporting
+ * whether the endpoint is reachable and which model ids it serves, the backend
+ * records the outcome so the next time the dialog opens it can restore the same
+ * badge and model list instead of starting from blank. Only the *result* is
+ * stored — never the key itself beyond the vault.
+ */
+export function useConnectLlm() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (payload: ConnectRequest) => {
+      const { data } = await api.post<ConnectResponse>('/settings/llm/connect', payload)
+      return data
+    },
+    onSuccess: () => {
+      // The probe wrote its outcome server-side; refresh so a later reopen reads
+      // the stored state rather than a cache that predates the probe.
+      void queryClient.invalidateQueries({ queryKey: settingsKeys.all })
     },
   })
 }

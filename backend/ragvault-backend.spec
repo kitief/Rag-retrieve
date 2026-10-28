@@ -98,10 +98,6 @@ hiddenimports += collect_submodules("tiktoken")
 datas += collect_data_files("tiktoken_ext")
 hiddenimports += collect_submodules("tiktoken_ext")
 
-# Alembic is only used by the Docker entrypoint, but the import chain in
-# app/main.py is shared; keep it importable in case it is referenced.
-hiddenimports += collect_submodules("alembic")
-
 # --- bundled application data -------------------------------------------------
 datas.append((str(FRONTEND_DIST), "frontend/dist"))
 datas.append((str(EMBEDDED_MODELS), "fastembed"))
@@ -125,6 +121,11 @@ hiddenimports += [
     "app.services.ingestion_service",
     "app.core.i18n",
     "app.core.spa",
+    # Imported lazily inside parsers.parse_doc() so a broken .doc cannot break
+    # every other format at import time. PyInstaller does follow function-level
+    # imports, but naming it here keeps the legacy Word reader in the bundle
+    # even if that call site is ever moved behind a dynamic import.
+    "app.utils.doc_legacy",
 ]
 
 block_cipher = None

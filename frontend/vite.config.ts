@@ -12,13 +12,9 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      // No `rewrite` on purpose. The SPA always calls `/api/...`; who removes
-      // that prefix depends on the deployment:
-      //
-      //   * Docker — frontend/nginx.conf turns `/api/` into `/` when proxying
-      //     to the backend.
-      //   * Dev server and desktop build — the backend does it itself in
-      //     DesktopLocalMiddleware (backend/app/main.py).
+      // No `rewrite` on purpose. The SPA always calls `/api/...` and the backend
+      // strips that prefix itself in DesktopLocalMiddleware
+      // (backend/app/main.py) — the same code path serves the desktop build.
       //
       // Stripping it here as well removes it twice, so `/api/settings` becomes
       // `/settings`, which is not a router path: SpaMiddleware answers with

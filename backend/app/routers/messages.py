@@ -107,7 +107,7 @@ async def _save_messages(
     citations: list[dict],
     user_asked_at: datetime | None = None,
 ) -> None:
-    """Persist user question and assistant answer to PostgreSQL using a fresh DB session."""
+    """Persist user question and assistant answer to the database using a fresh session."""
     from app.database import AsyncSessionLocal
 
     cid = _to_uuid(chat_id)

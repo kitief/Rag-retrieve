@@ -20,7 +20,7 @@ api.interceptors.request.use((config) => {
   // in, so validation errors and AI output always match the interface.
   config.headers['X-App-Language'] = activeLanguage()
   // Desktop build only: prove we are the window the shell spawned, not a random
-  // page that guessed the port. No-op under nginx.
+  // page that guessed the port.
   Object.assign(config.headers, localAuthHeaders())
   return config
 })

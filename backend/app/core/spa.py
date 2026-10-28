@@ -1,10 +1,10 @@
 """
 Serve the built SPA from the API process.
 
-In the Docker deployment nginx owns the frontend and proxies ``/api`` to the
-backend. The desktop build has no nginx: one Python process must answer both,
-so the window can load ``http://127.0.0.1:PORT/`` and every relative URL in the
-SPA (``baseURL: '/api'``, ``fetch('/api/...')``) keeps working untouched.
+The desktop app has no separate web server: one Python process must answer both
+the API and the UI, so the window loads ``http://127.0.0.1:PORT/`` and every
+relative URL in the SPA (``baseURL: '/api'``, ``fetch('/api/...')``) keeps
+working untouched.
 
 The SPA is installed as an **ASGI middleware** rather than a catch-all route on
 purpose: FastAPI matches routes in registration order, so a route for
@@ -14,7 +14,8 @@ the router lets the middleware decide first — ``/api/*`` goes to FastAPI,
 everything else is a page in the SPA.
 
 Everything here is a no-op when ``WEB_DIST_DIR`` does not point at a real build,
-which is what keeps the Docker image byte-for-byte unaffected.
+so a backend-only run (``scripts/dev.ps1 -BackendOnly``, the test suite) still
+works against the Vite dev server.
 """
 from __future__ import annotations
 
@@ -71,19 +72,28 @@ class SpaMiddleware:
         self.dist = dist
         self.index_file = dist / "index.html"
         self.token = token
-        self._cache: dict[str, bytes] = {}
+        self._cache: bytes | None = None
+        self._cache_stamp: tuple[int, int] | None = None
 
     def _render_index(self) -> bytes:
-        cached = self._cache.get("index")
-        if cached is not None:
-            return cached
+        # Re-read whenever the build changes. Caching by identity alone would
+        # keep serving the previous bundle after `npm run build` until the
+        # process restarts, which makes a rebuilt UI look like it never shipped.
+        try:
+            stat = self.index_file.stat()
+            stamp = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            stamp = None
+        if self._cache is not None and stamp is not None and stamp == self._cache_stamp:
+            return self._cache
         html = self.index_file.read_text(encoding="utf-8")
         if self.token:
             meta = _TOKEN_META.format(token=self.token)
             if meta not in html:
                 html = html.replace("</head>", f"    {meta}\n  </head>", 1)
         payload = html.encode("utf-8")
-        self._cache["index"] = payload
+        self._cache = payload
+        self._cache_stamp = stamp
         return payload
 
     def _resolve_file(self, path: str) -> Path | None:
@@ -129,7 +139,8 @@ def mount_spa(app: FastAPI, raw_dir: str, token: str | None = None) -> bool:
     dist = resolve_dist(raw_dir)
     if dist is None:
         logger.info(
-            "SPA build not found at %r — API-only mode (nginx serves the frontend).", raw_dir
+            "SPA build not found at %r — API-only mode (run `npm run build` in frontend/).",
+            raw_dir,
         )
         return False
 

@@ -3,9 +3,7 @@ uvicorn[standard]==0.30.6
 pydantic[email]==2.9.2
 pydantic-settings==2.5.2
 sqlalchemy==2.0.35
-asyncpg==0.30.0
 aiosqlite==0.20.0
-alembic==1.13.3
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.12
@@ -23,10 +21,19 @@ python-dotenv==1.0.1
 aiofiles==24.1.0
 rich==13.9.4
 
-# ── Shelved capabilities (音视频转写 / 图片 OCR) ────────────────────────────────
+# ── PDF 分层解析 / OCR ────────────────────────────────────────────────────────
+# RapidOCR 是 PaddleOCR 模型的 ONNX 导出，模型文件随 wheel 一起分发，因此既
+# 不需要系统级 Tesseract/OpenCV 运行时，也不需要联网下载权重 —— 这两点对
+# 离线打包的桌面版是硬要求。opencv-python-headless 而非 opencv-python：我们
+# 只做图像处理，不需要 HighGUI，打包体积也小很多。
+rapidocr-onnxruntime==1.4.4
+opencv-python-headless==4.11.0.86
+shapely==2.2.0
+pyclipper==1.4.0
+
+# ── Shelved capabilities (音视频转写) ──────────────────────────────────────────
 # 解析代码仍完整保留在 app/utils/parsers.py 中，仅入口被封存。要重新启用：
-#   1. 取消下面两行的注释
-#   2. 在 backend/Dockerfile 里恢复 tesseract-ocr 与 ffmpeg 的 apt 安装
-#   3. 把 .env 里的 ENABLE_AUDIO_VIDEO_UPLOADS / ENABLE_OCR_UPLOADS 改成 true
-# pytesseract==0.3.13
+#   1. 取消下面一行的注释并重新安装依赖
+#   2. 额外安装系统组件 ffmpeg
+#   3. 把 .env 里的 ENABLE_AUDIO_VIDEO_UPLOADS 改成 true
 # faster-whisper==1.1.0

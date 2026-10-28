@@ -1,9 +1,9 @@
 ================================================================================
-RAGVAULT BACKEND DEPENDENCIES & USE CASES (100% OFFLINE WEB APPLICATION)
+RAGVAULT BACKEND DEPENDENCIES & USE CASES (WINDOWS DESKTOP APPLICATION)
 ================================================================================
 
 This document lists all backend dependencies used in RagVault, categorized by 
-subsystem, along with their specific use cases and offline role.
+subsystem, along with their specific use cases and runtime role.
 
 --------------------------------------------------------------------------------
 1. WEB FRAMEWORK & SERVER
@@ -51,15 +51,10 @@ subsystem, along with their specific use cases and offline role.
   - Role: Defines database models (users, spaces, documents, chat messages, 
     quizzes, notes) and executes asynchronous relational queries.
 
-• asyncpg (0.30.0)
-  - Use Case: Asynchronous PostgreSQL client library.
+• aiosqlite (0.20.0)
+  - Use Case: Asynchronous SQLite driver.
   - Role: High-performance async driver used by SQLAlchemy to connect to the 
-    local PostgreSQL container or database instance.
-
-• alembic (1.13.3)
-  - Use Case: Database schema migration management.
-  - Role: Tracks database schema versioning, generates auto-migrations, and 
-    safely applies schema updates locally without losing stored data.
+    embedded SQLite database file inside the application data directory.
 
 
 --------------------------------------------------------------------------------
@@ -78,19 +73,14 @@ subsystem, along with their specific use cases and offline role.
 
 
 --------------------------------------------------------------------------------
-4. LOCAL LLM INVOCATION & ORCHESTRATION (OFFLINE AI)
+4. CLOUD LLM INVOCATION & ORCHESTRATION
 --------------------------------------------------------------------------------
 
 • httpx (0.27.2)
   - Use Case: Asynchronous HTTP client.
-  - Role: Communicates directly with the local Ollama daemon (http://ollama:11434 
-    or http://localhost:11434) to trigger offline LLM inference (Qwen 2.5, 
-    Llama 3.1, Mistral, etc.) and stream tokens back.
-
-• langchain-community (0.3.7)
-  - Use Case: AI component integrations and utilities.
-  - Role: Provides local document loaders, prompt templates, text splitters, 
-    and integration helpers for local LLMs and vector stores.
+  - Role: Calls the OpenAI-compatible Chat Completions endpoint (DeepSeek by
+    default, or any self-hosted vLLM / llama.cpp / Ollama gateway exposing the
+    same protocol) and streams tokens back for SSE.
 
 • langgraph (0.2.45)
   - Use Case: Stateful multi-step AI workflow & agent orchestration.
@@ -103,15 +93,15 @@ subsystem, along with their specific use cases and offline role.
 --------------------------------------------------------------------------------
 
 • chromadb (0.5.18)
-  - Use Case: Local vector database.
+  - Use Case: Embedded vector database.
   - Role: Stores high-dimensional document chunk embeddings, metadata, and 
-    performs fast approximate nearest-neighbor (ANN) similarity search offline.
+    performs fast approximate nearest-neighbor (ANN) similarity search offline
+    via PersistentClient — no server process involved.
 
-• sentence-transformers (3.3.1)
-  - Use Case: Local sentence and text embedding generation.
-  - Role: Runs dense embedding models (e.g., BAAI/bge-small-en-v1.5 or 
-    all-MiniLM-L6-v2) on local CPU/GPU to convert text chunks into vector 
-    embeddings without external cloud APIs.
+• fastembed (>=0.4.0)
+  - Use Case: Local ONNX embedding generation.
+  - Role: Runs the bundled `BAAI/bge-small-en-v1.5` model on local CPU to convert
+    text chunks into vector embeddings without external cloud APIs.
 
 • tiktoken (0.8.0)
   - Use Case: Fast Byte-Pair Encoding (BPE) tokenization.
@@ -125,7 +115,7 @@ subsystem, along with their specific use cases and offline role.
 
 
 --------------------------------------------------------------------------------
-6. OFFLINE DOCUMENT & MEDIA PARSERS
+6. DOCUMENT & MEDIA PARSERS
 --------------------------------------------------------------------------------
 
 • PyMuPDF (1.24.13) [imported as `fitz`]
@@ -138,10 +128,13 @@ subsystem, along with their specific use cases and offline role.
   - Role: Extracts slide titles, bullet points, table text, and speaker notes 
     from presentation files locally.
 
-• faster-whisper (1.1.0)
+• faster-whisper (1.1.0) — SHELVED (commented out in requirements.txt)
   - Use Case: Local offline speech-to-text transcription.
   - Role: Uses CTranslate2-accelerated Whisper models (tiny/base/small/medium) 
     to transcribe audio and video files locally with high speed and low memory.
+  - To re-enable: uncomment in requirements.txt, install ffmpeg, set
+    ENABLE_AUDIO_VIDEO_UPLOADS=true. The parser code is kept in
+    app/utils/parsers.py.
 
 
 --------------------------------------------------------------------------------
@@ -150,8 +143,8 @@ subsystem, along with their specific use cases and offline role.
 
 • python-dotenv (1.0.1)
   - Use Case: Environment configuration loader.
-  - Role: Automatically reads key-value pairs from `.env` files into 
-    os.environ for runtime configuration.
+  - Role: Reads key-value pairs from `.env` files into os.environ during
+    development (the installed desktop app deliberately loads no env file).
 
 • rich (13.9.4)
   - Use Case: Rich terminal formatting and logging.
@@ -174,13 +167,16 @@ subsystem, along with their specific use cases and offline role.
 
 • aiosqlite (0.20.0)
   - Use Case: Asynchronous SQLite driver.
-  - Role: Provides lightweight, in-memory or file-based SQL database engine 
-    for fast isolated test suites without requiring a running PostgreSQL server.
+  - Role: Powers the application's embedded SQLite database (file-based in the
+    data directory, in-memory for tests) — no database server is required.
 
 ================================================================================
-OFFLINE COMPLIANCE SUMMARY:
-- Zero external SaaS/Cloud API dependencies (no OpenAI/Gemini/Anthropic keys).
-- All AI processing (LLM, Embeddings, STT) executes locally via Ollama, 
-  SentenceTransformers, and Faster-Whisper.
-- All persistent data stays inside local PostgreSQL, ChromaDB, and local storage.
+DEPLOYMENT SUMMARY:
+- Ships as a single Windows desktop process: Tauri v2 shell + PyInstaller-frozen
+  FastAPI backend. No Docker, no WSL, no external database or vector service.
+- LLM inference goes to a cloud OpenAI-compatible API (DeepSeek by default);
+  the API key is entered in the in-app Settings dialog and stored locally.
+- Embeddings (FastEmbed/ONNX) and all parsing run locally inside the process.
+- All persistent data stays inside the local SQLite file, the embedded Chroma
+  directory, and the uploads folder under %APPDATA%\RagVault.
 ================================================================================

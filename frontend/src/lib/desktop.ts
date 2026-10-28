@@ -1,11 +1,9 @@
 /**
  * Desktop (single-process) build glue.
  *
- * In the Docker deployment nginx terminates the browser and proxies `/api` to
- * the backend, so the SPA needs nothing special. In the desktop build there is
- * no nginx: the Python process serves the SPA *and* the API on a loopback port,
- * which means any process — or any web page the user happens to have open — can
- * reach the API too.
+ * The Python backend serves the SPA *and* the API on a loopback port, which
+ * means any process — or any web page the user happens to have open — can reach
+ * the API too.
  *
  * The Tauri shell therefore generates a random token per launch, passes it to
  * the sidecar as `RAGVAULT_LOCAL_TOKEN`, and has the backend inject it into
@@ -19,7 +17,7 @@ const TOKEN_HEADER = 'X-RagVault-Token'
 
 let cachedToken: string | null | undefined
 
-/** The per-launch local API token, or null when running under nginx/Docker. */
+/** The per-launch local API token, or null when the backend injected none. */
 export function localApiToken(): string | null {
   if (cachedToken !== undefined) return cachedToken
   if (typeof document === 'undefined') {
@@ -32,12 +30,12 @@ export function localApiToken(): string | null {
   return cachedToken
 }
 
-/** True when the SPA was served by the embedded backend rather than nginx. */
+/** True when the SPA was served by the local backend rather than the Vite dev server. */
 export function isDesktopBuild(): boolean {
   return localApiToken() !== null
 }
 
-/** Headers required by the desktop build; empty under nginx. */
+/** Headers required by the local backend; empty when it injected no token. */
 export function localAuthHeaders(): Record<string, string> {
   const token = localApiToken()
   return token ? { [TOKEN_HEADER]: token } : {}

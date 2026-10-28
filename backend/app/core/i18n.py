@@ -14,7 +14,7 @@ The active language comes from, in order of precedence:
 * the ``X-App-Language`` request header (the SPA sends whatever the user
   picked in the UI),
 * a value saved from the settings dialog (``app_settings`` table),
-* the ``APP_LANGUAGE`` environment variable (the Docker-level default),
+* the ``APP_LANGUAGE`` environment variable (the built-in default),
 * :data:`DEFAULT_LANGUAGE`.
 
 Because the header is request-scoped, it is stored in a
@@ -73,10 +73,10 @@ def normalize_language(value: str | None) -> str | None:
 
 def configured_language() -> str:
     """
-    Deployment default language.
+    Built-in default language.
 
     A value saved from the settings dialog wins over ``APP_LANGUAGE`` so the
-    language can be changed without restarting the containers.
+    language can be changed without restarting the app.
     """
     override = get_override("app_language")
     if override:
@@ -159,10 +159,11 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
     "doc.unsupported_type": {
         "en": (
             "File type '{ext}' is not supported right now. "
-            "Accepted types: PDF, PPTX/PPT. "
+            "Accepted types: PDF, PPTX/PPT, DOCX/DOC, Markdown, TXT, CSV/TSV. "
         ),
         "zh": (
-            "暂不支持 '{ext}' 类型的文件。目前支持的类型：PDF、PPTX/PPT。"
+            "暂不支持 '{ext}' 类型的文件。"
+            "目前支持的类型：PDF、PPTX/PPT、DOCX/DOC、Markdown、TXT、CSV/TSV。"
         ),
     },
     "doc.still_processing": {
@@ -335,12 +336,14 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
     "ai.no_documents": {
         "en": (
             "📄 **No relevant documents found in this Knowledge Space.**\n\n"
-            "Please upload a PDF or PPTX file to this space using the sidebar. "
+            "Please upload a document to this space using the sidebar — PDF, PPTX/PPT, "
+            "DOCX/DOC, Markdown, TXT or CSV/TSV. "
             "Once uploaded, I will answer your questions strictly using the information in your documents."
         ),
         "zh": (
             "📄 **该知识空间中未找到相关文档。**\n\n"
-            "请先通过侧边栏上传 PDF 或 PPTX 文件。上传完成后，我会严格依据文档内容回答你的问题。"
+            "请先通过侧边栏上传文档——支持 PDF、PPTX/PPT、DOCX/DOC、Markdown、TXT、CSV/TSV。"
+            "上传完成后，我会严格依据文档内容回答你的问题。"
         ),
     },
     "ai.not_found": {
@@ -353,11 +356,11 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
     "ai.error_config": {
         "en": (
             "⚠️ **LLM not configured**: the backend has no usable API credentials. "
-            "Set `LLM_API_KEY` in `.env` (get one at {docs_url}) and restart the backend container."
+            "Open Settings and enter an API key (get one at {docs_url}), then try again."
         ),
         "zh": (
             "⚠️ **LLM 未配置**：后端没有拿到可用的大模型 API 凭证。"
-            "请在 `.env` 中填写 `LLM_API_KEY`（可在 {docs_url} 获取），然后重启 backend 容器。"
+            "请打开「设置」填写 API Key（可在 {docs_url} 获取），然后重试。"
         ),
     },
     "ai.error_request": {
@@ -403,6 +406,26 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
     "settings.api_key_not_found": {
         "en": "That saved API key no longer exists.",
         "zh": "该 API Key 不存在。",
+    },
+    "settings.connect_ok": {
+        "en": "Connected. {count} models available.",
+        "zh": "连接成功，共获取到 {count} 个模型。",
+    },
+    "settings.connect_no_models": {
+        "en": "Connected, but the endpoint advertised no models — type a model name.",
+        "zh": "连接成功，但该端点没有返回模型列表，请手动输入模型名。",
+    },
+    "settings.connect_missing_base_url": {
+        "en": "Enter the API base URL first.",
+        "zh": "请先填写接口地址。",
+    },
+    "settings.connect_missing_key": {
+        "en": "Enter an API key first.",
+        "zh": "请先填写 API Key。",
+    },
+    "settings.connect_failed": {
+        "en": "Connection failed: {message}",
+        "zh": "连接失败：{message}",
     },
     # ── Generated titles ─────────────────────────────────────────────────────
     "title.new_chat": {

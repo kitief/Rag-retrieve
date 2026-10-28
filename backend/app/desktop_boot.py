@@ -120,13 +120,12 @@ def configure_environment(args: argparse.Namespace) -> None:
     data_dir = Path(args.data_dir).expanduser().resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    os.environ["RAGVAULT_EMBEDDED"] = "1"
     os.environ["DATA_DIR"] = str(data_dir)
-    os.environ["EMBEDDED"] = "true"
     os.environ.setdefault("LOG_LEVEL", args.log_level.upper())
 
-    # A desktop profile must not inherit the Docker `.env` sitting next to the
-    # repository (it points at Postgres and container paths).
+    # A desktop profile must not inherit a developer `.env` sitting next to the
+    # repository (an API key, a language override) — each install is its own
+    # profile and its settings live in the settings dialog.
     os.environ.setdefault("RAGVAULT_ENV_FILE", "")
 
     web_dist = Path(args.web_dist).expanduser()
@@ -153,13 +152,17 @@ def configure_environment(args: argparse.Namespace) -> None:
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
     else:
         os.environ.setdefault("HF_HOME", str(user_models))
-        # The Docker deployment reads HF_ENDPOINT from .env, which we skip here;
         # huggingface.co is unreachable or very slow from mainland China, so
         # without the mirror the first ingestion stalls and then fails.
         os.environ.setdefault(
             "HF_ENDPOINT",
             os.environ.get("RAGVAULT_HF_ENDPOINT", "https://hf-mirror.com"),
         )
+
+    # Keep the tiktoken BPE table under the writable data directory (the bundled
+    # model folder is read-only inside the installer) so it is not re-downloaded
+    # on every cold start.
+    os.environ.setdefault("TIKTOKEN_CACHE_DIR", str(user_models / "tiktoken"))
 
 
 def serve_with_reload(host: str, port: int, log_level: str, backend_root: Path) -> int:
@@ -284,7 +287,7 @@ def main(argv: list[str] | None = None, backend_root: Path | None = None) -> int
     print(f"[run_desktop]   frozen   : {_is_frozen()}", flush=True)
     print(f"[run_desktop]   data dir : {cfg.data_dir}", flush=True)
     print(f"[run_desktop]   database : {cfg.database_url}", flush=True)
-    print(f"[run_desktop]   chroma   : {cfg.chroma_mode} @ {cfg.chroma_persist_dir}", flush=True)
+    print(f"[run_desktop]   chroma   : {cfg.chroma_persist_dir}", flush=True)
     print(f"[run_desktop]   models   : {cfg.hf_home}", flush=True)
     print(f"[run_desktop]   spa      : {cfg.web_dist_dir or '(none)'}", flush=True)
 

@@ -1,6 +1,7 @@
 """
 Documents router: file upload, status polling, and deletion.
-Only PPTX, PDF, video, and audio files are accepted — everything else is rejected with 422.
+PDF, PPTX/PPT, DOCX/DOC, Markdown, TXT and CSV/TSV files are accepted — everything
+else is rejected with 422.
 Ingestion runs as a FastAPI BackgroundTask to avoid blocking the HTTP response.
 """
 import logging
@@ -115,7 +116,7 @@ async def upload_document(
     """
     Upload and ingest a document into a knowledge space.
 
-    - Validates file type (PDF, PPTX, Video, Audio).
+    - Validates file type (PDF, PPTX/PPT, DOCX/DOC, Markdown, TXT, CSV/TSV).
     - Streams file to temporary storage.
     - Creates Document record in 'processing' status.
     - Dispatches ingestion pipeline as a background task.
@@ -166,6 +167,11 @@ async def upload_document(
         status="processing",
         total_pages=0,
         total_chunks=0,
+        # Seed the progress columns so the row is self-describing from the first
+        # response: without this the client sees a bare "processing" until the
+        # background task happens to write its first tick.
+        progress=0,
+        progress_stage="queued",
     )
     db.add(doc)
     await db.commit()

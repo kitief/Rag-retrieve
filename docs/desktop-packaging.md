@@ -1,8 +1,17 @@
 # RagVault 桌面化封装方案
 
-> 目标：把当前的「Docker Compose 四服务栈」变成一个**双击即用的桌面应用**——用户看到的是一个普通图标，双击后不需要 Docker、不需要命令行、不需要浏览器。
+> 目标：把原来的「Docker Compose 四服务栈」变成一个**双击即用的桌面应用**——用户看到的是一个普通图标，双击后不需要 Docker、不需要命令行、不需要浏览器。
 >
-> 适用版本：alpha-v1.2（commit `3ae6034`）
+> 适用版本：alpha-v1.2（commit `3ae6034`）起草，alpha-v1.3 落地。
+
+> **⚠️ 状态说明（alpha-v1.3 之后）**
+> 本文是桌面化改造的**设计记录**，正文保留了当初「Docker 与桌面双轨并存」阶段的推演过程。
+> 该决策**已被推翻**：Windows 桌面版成为**唯一交付形态**，Docker / Docker Compose / WSL
+> 相关文件（`docker-compose.yml`、`backend/Dockerfile`、`frontend/Dockerfile`、
+> `docker/nginx.conf`、`frontend/nginx.conf`、`backend/docker-entrypoint.sh`、`.dockerignore`）
+> 以及 Postgres 专用的 Alembic 迁移链、`asyncpg`、`start.ps1` 均已从仓库删除。
+> 阅读时请把下文所有「Docker 保留 / 不动 compose / 双轨并行」的表述视为**历史方案**，
+> 以第 9 节和当前 README 为准。
 
 ---
 
@@ -17,7 +26,7 @@
 | Redis 怎么办？ | 不需要。全仓 grep `redis` 零命中，本来就没有 |
 | 安装包多大？ | **150–250 MB**（不是 5 MB——见第 6 节，这一节请务必读完） |
 | 前端要改吗？ | 要改 3 处：API base、SSE 读流、文件下载 |
-| 现有 Docker 部署要删吗？ | **不删**。桌面模式是新增的构建目标，`docker-compose.yml` 保留用于开发与服务器部署 |
+| 现有 Docker 部署要删吗？ | ~~不删~~ → **已删**。桌面版是唯一交付形态，Docker/Compose/WSL 相关文件已从仓库移除 |
 
 一句话概括改造思路：
 
@@ -158,7 +167,7 @@ await conn.execute(text("PRAGMA busy_timeout=5000"))
 await conn.execute(text("PRAGMA synchronous=NORMAL"))
 ```
 
-> **关于 alembic**：`alembic/versions/001_initial_schema.py` 里用的是 `sa.UUID()`（SQLAlchemy 通用类型），反而比 ORM 更可移植。但**桌面端建议不上 alembic**：迁移脚本要作为资源打包、用户机器上 `upgrade head` 失败极难恢复。桌面版用 `create_all` + 自维护一个 `schema_version` 表，升级时跑手写迁移函数，更可控。alembic 保留给服务器部署。
+> **关于 alembic**：`alembic/versions/001_initial_schema.py` 里用的是 `sa.UUID()`（SQLAlchemy 通用类型），反而比 ORM 更可移植。但**桌面端不上 alembic**：迁移脚本要作为资源打包、用户机器上 `upgrade head` 失败极难恢复。桌面版用 `create_all` + 自维护一个 `schema_version` 表，升级时跑手写迁移函数，更可控。**alpha-v1.3 起整条 Alembic 迁移链已随 Docker 一并删除。**
 >
 > **关于已有数据**：alpha 阶段没有真实用户数据，**不做 Postgres→SQLite 迁移**。如果答辩机上有数据，写个一次性导出脚本（`pg_dump --data-only` → 逐表 INSERT）即可，不要做通用迁移器。
 
@@ -431,7 +440,7 @@ Rust 侧用 `app.path().app_data_dir()` 取路径，通过 `--data-dir` 参数�
 | 生成测验 | 500（当时未配 API key，符合预期） |
 | Playwright 全流程（注册→上传→提问→设置弹窗） | 通过，console 无报错 |
 
-配好 LLM 之后再跑一遍完整验收（`_setup/accept_m0.py`：本地起一个假的 OpenAI 兼容端点，把问答、出题、点评、标题全部承接，不需要真 key）：
+配好 LLM 之后再跑一遍完整验收（临时脚本 `_setup/accept_m0.py`，**已随 `_setup/` 临时目录一并删除**：本地起一个假的 OpenAI 兼容端点，把问答、出题、点评、标题全部承接，不需要真 key）：
 
 | 步骤 | 结果 |
 | --- | --- |
@@ -454,7 +463,7 @@ Rust 侧用 `app.path().app_data_dir()` 取路径，通过 `--data-dir` 参数�
 
 - [x] `backend/ragvault-backend.spec`：onedir（**没有**用 onefile，每次启动解压到 temp、慢且杀软误报高）
 - [x] `--collect-all` 等价配置：`chromadb`、`onnxruntime`、`fastembed`、`tiktoken`、`tiktoken_ext`、`pymupdf`(fitz)、`tokenizers`、`huggingface_hub`
-- [x] `datas` 包含：`frontend/dist` → `frontend/dist`、fastembed 模型 cache → `fastembed`；`alembic` 用 `collect_submodules` 带上
+- [x] `datas` 包含：`frontend/dist` → `frontend/dist`、fastembed 模型 cache → `fastembed`（`alembic` 已随 Docker 移除，不再收集）
 - [x] 手工验证：`dist/ragvault-backend/ragvault-backend.exe --data-dir ./tmp --port 0` → 打印 `RAGVAULT_READY port=…`
 
 **产物**：`dist/ragvault-backend/`，**321 MB**（`_internal/` + `ragvault-backend.exe` 28 MB），构建约 84 秒。
@@ -512,7 +521,7 @@ hiddenimports += collect_submodules("tiktoken") + collect_submodules("tiktoken_e
 
 `utils/chunker.py` 有 try/except 降级（近似计数），所以这个漏掉不会崩，只是 chunk 边界会和 token 计数不一致——属于**静默劣化**，值得修。
 
-#### 验收（`_setup/smoke_frozen.py`）
+#### 验收（临时脚本 `_setup/smoke_frozen.py`，已随 `_setup/` 删除）
 
 脚本 spawn exe、从 stdout 读 `RAGVAULT_READY port=N`，然后走完整链路：
 
@@ -711,10 +720,10 @@ Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wai
 
 - ❌ **不打包本地 LLM**（GGUF）。`models/` 目录已被 `.gitignore` 忽略，说明这条路已经放弃过。云端 OpenAI 兼容 API 是当前架构，保持。
 - ❌ **不做 Postgres → SQLite 的通用数据迁移器**。alpha 阶段无真实数据。需要就写一次性脚本。
-- ❌ **不保留 Chroma/Docker 作为桌面运行时依赖**。桌面版必须零容器依赖。Docker 保留给服务器部署和开发环境。
+- ✅ **Docker / Compose / WSL 已全部移除**。桌面版是唯一运行形态，仓库里不再保留任何容器相关文件、配置或文档；`asyncpg`、`alembic` 迁移链、`docker-entrypoint.sh`、两个 `Dockerfile`、两份 `nginx.conf`、`docker-compose.yml`、根目录 `start.ps1` 均已删除。
 - ❌ **不做自动更新**（M4 列为可选）。毕设场景价值低、引入签名复杂度高。
 - ❌ **不为 Electron 维护第二套壳**。选定 Tauri 后，Electron 方案只在文档里作为对比存在。
-- ❌ **不动现有 `docker-compose.yml` 与 `start.ps1`**。桌面化是**新增**构建目标（`npm run tauri:build`），不是替换。这保证答辩时 Docker 路径仍然可用。
+- ❌ **不保留第二条启动路径**。`scripts/dev.ps1` 与 `npm run tauri dev` 之外不再维护任何「多服务」启动脚本。
 
 ---
 

@@ -8,8 +8,8 @@ download fails — and since it happens at import time it used to take the whole
 API down. We therefore degrade to an approximate token count instead of
 crashing: chunk boundaries move by a few tokens, retrieval quality does not.
 
-Set `TIKTOKEN_CACHE_DIR` (compose points it at the persistent `hf_cache`
-volume) to keep the downloaded table across container rebuilds.
+Set `TIKTOKEN_CACHE_DIR` (the desktop launcher points it at the model cache
+under the data directory) to keep the downloaded table across restarts.
 """
 import logging
 import re

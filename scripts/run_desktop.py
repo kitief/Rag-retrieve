@@ -1,10 +1,9 @@
 """
-Run RagVault as a single desktop-style process (development entry point).
+Run RagVault as a single desktop process (development entry point).
 
-This is the M0 deliverable described in ``docs/desktop-packaging.md``: no Docker,
-no Postgres container, no Chroma container, no nginx. One Python process serves
-the API *and* the built SPA on a loopback port, with SQLite and an embedded
-Chroma store under a single data directory.
+This is the M0 deliverable described in ``docs/desktop-packaging.md``: one Python
+process serves the API *and* the built SPA on a loopback port, with SQLite and an
+embedded Chroma store under a single data directory.
 
 Usage::
 

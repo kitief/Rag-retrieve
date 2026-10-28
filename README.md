@@ -18,69 +18,45 @@
 
 | 工具 | 版本 | 说明 |
 |------|---------|-------|
-| Docker | 24.0+ | |
-| Docker Compose | 2.20+ | |
-| 内存 | 最低 8GB | Postgres + Chroma + 后端 + 前端 |
-| 磁盘 | 3GB 可用空间 | Python + Node 镜像及数据卷 |
+| 操作系统 | Windows 10 1809+ / Windows 11 | 需要 WebView2（Win11 自带，Win10 一般已随 Edge 安装） |
+| 内存 | 最低 8GB | 后端进程 + WebView2 + 嵌入模型 |
+| 磁盘 | 1.5GB 可用空间 | 安装包约 137 MiB，安装后约 600 MB |
 | LLM API Key | — | DeepSeek：https://platform.deepseek.com/api_keys |
 
-### 1. 克隆并配置
+### 1. 安装
 
-```bash
-git clone https://github.com/kitief/Rag-retrieve.git
-cd Rag-retrieve
-cp .env.example .env
-```
+下载并双击 `RagVault_2.1.0_x64-setup.exe`。安装位置为
+`%LOCALAPPDATA%\RagVault`（无需管理员权限），用户数据在 `%APPDATA%\RagVault`。
 
-编辑 `.env`，至少需要填写：
+> **首次运行**：安装包未做代码签名，Windows SmartScreen 会提示「已保护你的电脑」。
+> 点「更多信息」→「仍要运行」；或对安装包右键 → 属性 → 勾选「解除锁定」再装。
 
-```bash
-POSTGRES_PASSWORD=your_strong_password
-JWT_SECRET=your_random_32_char_secret_here
-LLM_API_KEY=sk-...            # 必填 —— 对话、测验、笔记全都依赖它
-LLM_PROVIDER=deepseek         # 或：openai | custom
-```
+### 2. 填入 API Key
 
-如果你使用的不是 DeepSeek，还需要额外设置：
+首次启动会弹出引导窗口，把 DeepSeek（或任何 OpenAI 兼容端点）的 API Key 填进去即可。
+之后随时可以在侧边栏底部的「设置」里修改。密钥只保存在本机的 SQLite 数据库里。
 
-```bash
-LLM_BASE_URL=https://your-endpoint/v1
-LLM_MODEL=your-model-name
-```
-
-### 2. 启动所有服务
-
-```bash
-docker compose up -d
-```
-
-该命令会启动 **4 个服务**：`postgres`、`chromadb`、`backend`、`frontend`。
-没有本地模型服务，也不会下载 GGUF 模型。
-
-### 3. 打开应用
-
-```
-http://localhost:3000
-```
+### 3. 开始使用
 
 注册账号、创建知识空间、上传文档，然后就可以开始学习了！
 
-> ⚠️ 运行时需要联网（用于调用 LLM 服务商接口）；首次启动时也需要联网，以便拉取 Docker 镜像和 FastEmbed ONNX 模型。
+> ⚠️ 运行时需要联网（用于调用 LLM 服务商接口）。向量化全程在本机完成，
+> 只有检索命中的片段会发送给服务商。
+
+从源码构建请见下方 [Windows 桌面版](#-windows-桌面版) 一节。
 
 ---
 
 ## 🖥 Windows 桌面版
 
-除了 Docker 部署，本仓库还可以打包成**免 Docker、免 Python 环境的 Windows 桌面应用**：
-双击安装，后端（PyInstaller 冻结的 FastAPI + SQLite + 嵌入式 Chroma）由 Tauri 壳自动拉起，
-界面在原生 WebView2 窗口里运行。
+RagVault 就是一个 **Windows 桌面应用**：双击图标启动，后端（PyInstaller 冻结的
+FastAPI + SQLite + 嵌入式 Chroma）由 Tauri 壳自动拉起，界面在原生 WebView2 窗口里运行。
+不需要 Docker、不需要 Python、不需要浏览器。
 
-**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_1.3.0_x64-setup.exe`（约 137 MiB）
+**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe`（约 137 MiB）
 
-安装位置为 `%LOCALAPPDATA%\RagVault`（无需管理员权限），用户数据在 `%APPDATA%\RagVault`。
-
-> **首次运行**：安装包未做代码签名，Windows SmartScreen 会提示「已保护你的电脑」。
-> 点「更多信息」→「仍要运行」；或对安装包右键 → 属性 → 勾选「解除锁定」再装。
+> 该路径是**从本版本源码构建后**的产物名。仓库里若只存在 `RagVault_1.3.0_x64-setup.exe`，
+> 那是上一个 alpha 的构建，不含本文档描述的 PDF 分层解析与连接状态持久化。
 
 **从源码构建**（需要 Rust MSVC 工具链 + Python 3.11 + Node 20+）：
 
@@ -99,26 +75,30 @@ frontend\node_modules\.bin\tauri build
 完整的设计权衡、踩坑记录与验收清单见
 [docs/desktop-packaging.md](docs/desktop-packaging.md)。
 
-桌面版与 Docker 版的差异：
+运行时形态：
 
-| | Docker 版 | 桌面版 |
-| --- | --- | --- |
-| 数据库 | PostgreSQL | SQLite（WAL） |
-| 向量库 | ChromaDB Server | 嵌入式 Chroma（PersistentClient） |
-| 启动 | `docker compose up -d` | 双击 exe |
-| 数据位置 | Docker 卷 | `%APPDATA%\RagVault` |
-| 资源上传上限 | 2 GB | 500 MB |
-| 访问方式 | 浏览器 `localhost:3000` | 原生窗口 |
+| | 桌面版 |
+| --- | --- |
+| 数据库 | SQLite（WAL） |
+| 向量库 | 嵌入式 Chroma（PersistentClient） |
+| 启动 | 双击 exe |
+| 数据位置 | `%APPDATA%\RagVault` |
+| 安装位置 | `%LOCALAPPDATA%\RagVault` |
+| 资源上传上限 | 500 MB |
+| 访问方式 | 原生窗口（后端只监听回环端口） |
 
 ---
 
 ## 🏗 架构
 
 ```
-浏览器 (React + Vite)
+Tauri v2 壳 (Rust)
+   │  生成 RAGVAULT_LOCAL_TOKEN，拉起后端，解析 RAGVAULT_READY port=…
+   ▼
+WebView2 窗口 (React + Vite，由后端托管)
    │  REST + SSE  │
    ▼               ▼
-FastAPI 后端 (端口 8000)
+FastAPI 后端 (单个 Python 进程，仅监听 127.0.0.1)
    ├── 认证 (JWT)
    ├── 摄取服务
    │    └── PDF/PPTX/Word/TXT/MD/图片/音视频 → 解析 → 分块 → 向量化 → ChromaDB
@@ -131,8 +111,8 @@ FastAPI 后端 (端口 8000)
    └── 推荐服务
         └── LangGraph → LLM → 个性化 Markdown 学习计划
    │
-   ├── PostgreSQL（用户、会话、消息、文档、测验、笔记）
-   ├── ChromaDB 0.5.18（向量嵌入，每个 chat_id 一个 collection）
+   ├── SQLite（%APPDATA%\RagVault\ragvault.db：用户、会话、消息、文档、测验、笔记）
+   ├── 嵌入式 ChromaDB 0.5.18（%APPDATA%\RagVault\chroma，每个 chat_id 一个 collection）
    └── 云端 LLM（OpenAI 兼容的 Chat Completions 接口 —— 默认 DeepSeek）
 ```
 
@@ -157,7 +137,7 @@ OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）�
 
 > 旧的本地栈（`model-init` + `llm` llama.cpp 服务、`app/utils/ollama_helper.py`、
 > `app/services/llm_gate.py`、LangChain 的 `Ollama` 客户端）已被移除。
-> `scripts/setup_model.py` 和 `models/*.gguf` 已不再被 compose 使用。
+> `scripts/setup_model.py` 和 `models/*.gguf` 也不再使用。
 
 ---
 
@@ -166,16 +146,11 @@ OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）�
 用户能看到的一切 —— Web 界面、校验错误信息、以及模型写出的答案 —— 都可以在
 **English** 和 **简体中文** 之间切换。
 
-### 部署级默认语言
+### 内置默认语言
 
-在 `.env` 中设置 `APP_LANGUAGE` 并重启后端：
-
-```env
-APP_LANGUAGE=zh     # zh = 简体中文，en = English（默认）
-```
-
-`docker-compose.yml` 会把它透传给后端容器。该值通过 `GET /config`
-（`default_language` 字段）暴露给浏览器，因此全新浏览器首次打开应用时就会使用该语言。
+在「设置 → Language」里勾选 `Use as deployment default`，或直接设置 `APP_LANGUAGE`
+环境变量（`zh` / `en`，默认 `en`）。该值通过 `GET /config`（`default_language` 字段）
+暴露给界面，因此全新安装首次打开应用时就会使用该语言。
 
 ### 单个访问者覆盖
 
@@ -218,25 +193,80 @@ APP_LANGUAGE=zh     # zh = 简体中文，en = English（默认）
 
 | 类型 | 扩展名 | 状态 | 处理方式 |
 |------|-----------|--------|------------|
-| PDF | `.pdf` | ✅ 已启用 | PyMuPDF 逐页解析；仅当 `ENABLE_OCR_UPLOADS=true` 时扫描页才回退到 OCR |
+| PDF | `.pdf` | ✅ 已启用 | 分层流水线：先逐页审计，再只对坏页做 OCR（RapidOCR，模型随包分发）；表格转 Markdown |
 | PowerPoint | `.pptx` `.ppt` | ✅ 已启用 | python-pptx 逐张幻灯片解析；二进制 `.ppt` 通过原始流提取作为回退 |
-| Word | `.docx` `.doc` | 🅿️ 已搁置 | python-docx / ZIP-XML 回退 —— 解析器保留，但上传会被拒绝 |
-| 纯文本 | `.txt` `.md` `.csv` | 🅿️ 已搁置 | 直接读取，切分为约 2000 字符的伪页面 —— 解析器保留 |
+| Word（新版） | `.docx` | ✅ 已启用 | python-docx 按 body 顺序提取，表格压平为 `a \| b`；失败时回退 ZIP-XML |
+| Word（旧版） | `.doc` | ✅ 已启用 | 纯 Python 实现 OLE2 + Word 片段表（`app/utils/doc_legacy.py`）；被改名的 RTF/HTML 也能读 |
+| Markdown | `.md` `.markdown` | ✅ 已启用 | 直接读取，源码原样保留（标题、列表、代码块），切分为约 2000 字符的伪页面 |
+| 纯文本 | `.txt` `.text` | ✅ 已启用 | 直接读取，UTF-8 / GB18030 / UTF-16 依次回退；按空行分段，无空行时按行分 |
+| 表格文本 | `.csv` `.tsv` | ✅ 已启用 | 按整行分页，且**每页都重复表头**，保证检索到的片段仍能看懂列含义 |
 | 图片 | `.png` `.jpg` `.jpeg` `.webp` `.bmp` `.tiff` | 🅿️ 已搁置 | Tesseract OCR + 对比度增强 —— 需 `ENABLE_OCR_UPLOADS=true` |
 | 视频 | `.mp4` `.mkv` `.mov` `.avi` `.webm` | 🅿️ 已搁置 | ffmpeg 抽取音轨 → Faster-Whisper —— 需 `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
 | 音频 | `.mp3` `.wav` `.m4a` `.ogg` `.flac` `.aac` | 🅿️ 已搁置 | Faster-Whisper（PyAV 回退） —— 需 `ENABLE_AUDIO_VIDEO_UPLOADS=true` |
 
 > ❌ 任何不在已启用列表中的类型都会被拒绝，并返回清晰的 422 错误信息。
-> 📦 单文件最大上传体积：**2 GB**。
+> 📦 单文件最大上传体积：**500 MB**。
+
+### 为什么 `.doc` 不需要额外依赖
+
+`python-docx` 只认识 OOXML zip 容器，完全读不了 Word 97-2003。对本项目来说，
+其余几条路都不划算：`olefile` 是又多一个要随包分发的依赖，COM 自动化要求目标
+机器上装有正版 Word，`textract`/`antiword` 则要带原生二进制。因此
+`backend/app/utils/doc_legacy.py` 用约 400 行纯 Python 直接实现了涉及的两种
+小而稳定的格式：Compound File Binary 容器与 Word 片段表（piece table）。
+
+损坏或后缀名不符的文件（RTF 或 HTML 被改成 `.doc`、纯文本顶着 Word 后缀）会
+先被嗅探识别，再走对应回退路径，而不是让上传直接失败。
+
+### PDF：先审计，再解析
+
+绝大多数“上传了却答不出来”的 PDF 不是解析器坏了，而是**页面本身没有文字层**：
+整页是一张扫描图，PyMuPDF 取到的文本是空串或几十个乱码字符。旧实现会把这类
+页面静默丢弃，于是文档标着「已就绪」、实际只入库了几个碎片，模型只能回答
+“在你的文档里找不到相关内容”。
+
+`backend/app/utils/pdf_pipeline.py` 把这件事拆成两步：
+
+1. **审计**（很快，不花 OCR 时间）。逐页测量文本量、图像覆盖率、乱码率、单字符
+   行数，算出 0–1 的文本质量分，把页面分类为 `digital` / `scanned` / `hybrid` /
+   `blank`，并标记 `needs_ocr`。判定“坏页”的关键是**图像盖满整页但文字量极少**
+   —— 这正是隐藏着劣质 OCR 图层的扫描件。
+2. **按需 OCR**。只对 `needs_ocr` 的页渲染成图再识别，且预处理是阶梯式的
+   （原图 → 去斜 → 去噪二值化 → 组合），一旦置信度达标就停手 —— 因为对清晰
+   页面做二值化反而会降低识别率。
+
+被跳过的页会被**明确报出来**：文档行上存一份 `parse_audit`，界面在文档名旁显示
+「OCR n 页」「m 页未被读取」徽章，点开可看到逐页的页码、类型、字符数、OCR
+置信度与所用预处理。这样“为什么答不出来”是可查的，而不是靠猜。
+
+两类失败也不会再被咽下去：扫描件在 OCR 被关掉、或机器上根本没有 OCR 引擎时，
+上传会**直接失败并写明原因**（而不是入库 0 个片段后标成「已就绪」）；失败原因
+存在文档行的 `error_message` 上，直接显示在列表里。
+
+几个刻意的取舍：
+
+- **不并行 OCR，但会限制线程数。** onnxruntime 默认按逻辑核开线程，负载高时
+  互相抢核反而更慢：同一批页面实测库默认 12.4 秒/页，限到 8 线程 7.5 秒/页。
+  多进程还能再快一点（6.1 秒/页），但打包后的程序要为此引入 `freeze_support()`
+  与受控入口，收益不抵风险，所以长文档仍靠 `PDF_OCR_MAX_PAGES` 与
+  `PDF_OCR_TIME_BUDGET_SECONDS` 封顶，线程数由 `PDF_OCR_THREADS` 控制。
+- **有正常文字层的页面绝不 OCR。** 文字层是文字层，OCR 只会更差。
+- **DPI 300 + 长边压到 1600 就够。** 实测 400 DPI 的字符数与置信度与 300 DPI
+  无差别，只是白烧 CPU。
+
+对一本 1400 页的扫描书，一次全量 OCR 是按小时计的（实测单页 4.5s，1439 页约
+107 分钟）。默认 `PDF_OCR_MAX_PAGES=0`（不限），建议这类文档改成几百页，或先切
+分上传。截断后审计里会写明「还有 m 页未被读取」，问题问到未读页时仍会老实回答
+找不到，而不是编造。
 
 ### 重新启用已搁置的解析器
 
-解析代码**完整保留**在 `backend/app/utils/parsers.py`；只是入口被开关挡住了。
-要恢复某一种：
+图片 OCR 与音视频转写**代码保留但入口被开关挡住**。PDF 的 OCR 已经默认开启，
+下面只针对图片与音视频：
 
-1. 在 `.env` 中设置 `ENABLE_OCR_UPLOADS=true` 和/或 `ENABLE_AUDIO_VIDEO_UPLOADS=true`
-2. 在 `backend/requirements.txt` 中取消注释 `pytesseract` / `faster-whisper`
-3. 在 `backend/Dockerfile` 中取消注释 `tesseract-ocr` / `ffmpeg` 的 `apt-get` 代码块
+1. 在 `backend/requirements.txt` 中取消注释 `pytesseract` / `faster-whisper`
+2. 安装系统组件：Tesseract-OCR（含 `chi_sim` 语言包）与 ffmpeg
+3. 把 `.env` 里的 `ENABLE_OCR_UPLOADS` / `ENABLE_AUDIO_VIDEO_UPLOADS` 改成 true
 4. （可选）把扩展名加回 `frontend/src/components/documents/DropZone.tsx`
    的 `SUPPORTED_EXTS`
 
@@ -253,12 +283,13 @@ APP_LANGUAGE=zh     # zh = 简体中文，en = English（默认）
 | LLM | **云端 API**，走 OpenAI 兼容的 Chat Completions（默认 DeepSeek） |
 | 默认模型 | `deepseek-chat`（可通过 `LLM_PROVIDER` / `LLM_MODEL` 配置） |
 | 向量化 | **FastEmbed**（ONNX Runtime）—— `BAAI/bge-small-en-v1.5` |
-| 向量数据库 | ChromaDB 0.5.18（本地持久化） |
-| 关系型数据库 | PostgreSQL 16 |
+| 向量数据库 | ChromaDB 0.5.18（嵌入式 `PersistentClient`） |
+| 关系型数据库 | SQLite（WAL 模式） |
+| 桌面壳 | Tauri v2（Rust）+ WebView2 |
+| 打包 | PyInstaller（后端）+ NSIS（安装包） |
 | 语音转文字 | *已搁置* —— Faster-Whisper 代码保留，默认禁用 |
-| OCR | *已搁置* —— Tesseract 代码保留，默认禁用 |
+| OCR | **RapidOCR**（PaddleOCR 的 ONNX 导出）—— 仅用于 PDF 扫描页，按需触发 |
 | 认证 | JWT（access + refresh 双 token），bcrypt |
-| 部署 | Docker + Docker Compose |
 
 实现完全遵循上述技术栈，未作任何偏离。
 
@@ -266,27 +297,39 @@ APP_LANGUAGE=zh     # zh = 简体中文，en = English（默认）
 
 ## ⚙️ 配置
 
-所有配置都在 `.env` 中。关键变量：
+日常使用不需要碰任何配置文件 —— API Key、语言、模型都在应用内的「设置」对话框里，
+保存在 `%APPDATA%\RagVault\ragvault.db`。下面这些环境变量只是内置默认值，
+供开发时用 `.env` 覆盖（见 `.env.example`）：
 
 | 变量 | 默认值 | 说明 |
 |----------|---------|-------------|
 | `LLM_PROVIDER` | `deepseek` | `deepseek` / `openai` / `custom` |
-| `LLM_API_KEY` | *（必填）* | 服务商 API 密钥 —— 对话、测验、笔记、标题生成都需要 |
+| `LLM_API_KEY` | *（空）* | 服务商 API 密钥 —— 留空时在应用内填写 |
 | `LLM_MODEL` | `deepseek-chat` | 发送给服务商的模型标识 |
 | `LLM_BASE_URL` | `https://api.deepseek.com/v1` | OpenAI 兼容的 base URL（覆盖预设值） |
 | `LLM_TIMEOUT_SECONDS` | `180` | 单请求超时时间 |
 | `LLM_MAX_RETRIES` | `3` | 遇到 429 / 5xx / 传输错误时的重试次数 |
-| `APP_LANGUAGE` | `en` | 部署级默认界面与 AI 语言（`en` / `zh`） |
+| `APP_LANGUAGE` | `en` | 内置默认界面与 AI 语言（`en` / `zh`） |
 | `ENABLE_AUDIO_VIDEO_UPLOADS` | `false` | 已搁置的音频/视频转写 |
-| `ENABLE_OCR_UPLOADS` | `false` | 已搁置的图片 / 扫描版 PDF OCR |
+| `ENABLE_OCR_UPLOADS` | `true` | PDF 扫描页的 OCR；同时也解锁已搁置的图片 OCR |
+| `PDF_OCR_ENGINE` | `auto` | `auto` / `rapidocr` / `tesseract` —— `auto` 优先 RapidOCR |
+| `PDF_OCR_DPI` | `300` | OCR 渲染分辨率；再高不会提升识别率，只更慢 |
+| `PDF_OCR_MAX_SIDE` | `1600` | 渲染后图像长边上限，用于压住 CPU 开销 |
+| `PDF_OCR_MAX_PAGES` | `0` | 单个文档最多 OCR 多少页（`0` = 不限）；长扫描书建议设小 |
+| `PDF_OCR_TIME_BUDGET_SECONDS` | `1800` | 单个文档的 OCR 时间上限，超时即停并记录未读页 |
+| `PDF_OCR_MIN_CONFIDENCE` | `0.75` | 低于此置信度的页记为低置信，并在界面提示复核 |
+| `PDF_OCR_MAX_ATTEMPTS` | `3` | 预处理阶梯最多尝试几档（原图 → 去斜 → 二值化 → 组合） |
+| `PDF_OCR_THREADS` | `8` | OCR 的 ONNX 线程数。实测库默认（每核一线程）12.4 秒/页，限到 8 线程 7.5 秒/页；填 `0` 交回库决定 |
+| `PDF_MIN_TEXT_CHARS` | `200` | 文本量低于此值的整页图像判为“需要 OCR” |
+| `PDF_EXTRACT_TABLES` | `true` | 把 PDF 表格转成 Markdown 一并入库 |
 | `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | FastEmbed ONNX 向量化模型 |
 | `WHISPER_MODEL` | `base` | 仅在重新启用音频/视频时使用 |
 | `CHUNK_SIZE` | `600` | 每个文本块的目标 token 数 |
 | `CHUNK_OVERLAP` | `100` | 相邻文本块之间的 token 重叠 |
 | `TOP_K` | `5` | 每次查询检索的文本块数量 |
 | `WHISPER_DEVICE` | `cpu` | 有 GPU 时可设为 `cuda` |
-| `POSTGRES_PASSWORD` | *（必填）* | PostgreSQL 密码 |
-| `JWT_SECRET` | *（必填）* | 用于 JWT 签名的 32 位以上随机字符串 |
+| `DATA_DIR` | `%APPDATA%\RagVault` | 所有可变数据（数据库、向量、上传、模型缓存）的根目录 |
+| `JWT_SECRET` | *（内置默认值）* | 用于 JWT 签名的 32 位以上随机字符串 |
 
 ---
 
@@ -333,13 +376,12 @@ APP_LANGUAGE=zh     # zh = 简体中文，en = English（默认）
 
 ## 🛠 开发环境搭建
 
-改代码之前，先从三种运行方式里挑一个——它们的启动成本差别很大：
+改代码之前，先从两种运行方式里挑一个——它们的启动成本差别很大：
 
 | 方式 | 命令 | 适合 | 热重载 |
 | --- | --- | --- | --- |
-| **单进程 + Vite**（推荐） | `.\scripts\dev.ps1` | 日常改后端和前端 | 后端 + 前端都热重载 |
+| **单进程 + Vite**（推荐） | `.\scripts\dev.cmd` | 日常改后端和前端 | 后端 + 前端都热重载 |
 | 桌面壳 | `npm run tauri dev` | 验证原生另存为、首启引导等壳内行为 | 无（改前端要重新 build） |
-| Docker Compose | `.\_setup\start.ps1` | 模拟线上四容器部署 | 后端 `--reload`，前端打进 nginx |
 
 ### 首次准备
 
@@ -353,17 +395,30 @@ cd frontend
 npm install --registry https://registry.npmmirror.com
 ```
 
-### 日常开发：`scripts\dev.ps1`
+### 日常开发：`scripts\dev.cmd`
 
 ```powershell
-.\scripts\dev.ps1                 # API + Vite，两者都热重载
-.\scripts\dev.ps1 -BackendOnly    # 只跑 API（同时服务已构建的 SPA）
-.\scripts\dev.ps1 -NoReload       # 关掉热重载，调试断点时用
-.\scripts\dev.ps1 -Frozen         # 跑 PyInstaller 产物，和安装包里的二进制一致
-.\scripts\dev.ps1 -Stop           # 停掉所有相关进程
+.\scripts\dev.cmd                 # API + Vite，两者都热重载
+.\scripts\dev.cmd -BackendOnly    # 只跑 API（同时服务已构建的 SPA）
+.\scripts\dev.cmd -NoReload       # 关掉热重载，调试断点时用
+.\scripts\dev.cmd -Frozen         # 跑 PyInstaller 产物，和安装包里的二进制一致
+.\scripts\dev.cmd -Stop           # 停掉所有相关进程
 ```
 
-脚本会先把 API 拉到 `http://127.0.0.1:8000`（带 `--reload`，改 `backend/` 下任何文件自动重启），再起 Vite 到 `http://127.0.0.1:3000`，`/api` 通过 `vite.config.ts` 的代理转到后端。数据落在 `.desktop-data\`（SQLite + 嵌入式 Chroma），和 Docker 那套的 Postgres 完全隔开，互不污染。
+脚本会先把 API 拉到 `http://127.0.0.1:8000`（带 `--reload`，改 `backend/` 下任何文件自动重启），再起 Vite 到 `http://127.0.0.1:3000`，`/api` 通过 `vite.config.ts` 的代理转到后端。数据落在 `.desktop-data\`（SQLite + 嵌入式 Chroma），与安装版在 `%APPDATA%\RagVault` 的数据完全隔开。
+
+> **为什么入口是 `.cmd` 而不是 `.ps1`**
+>
+> `dev.ps1` 没有数字签名。在默认的 `RemoteSigned` 策略下，本机自己写的脚本本来可以跑；
+> 但如果 Authenticode 校验链路被安全软件或组策略限制，直接 `.\scripts\dev.ps1` 会报
+> 「未对文件进行数字签名」或「AuthorizationManager check failed」。
+>
+> `dev.cmd` 不是 PowerShell 脚本，执行策略管不到它；它用
+> `-ExecutionPolicy Bypass` 重新拉起 `dev.ps1`，且**只对那一个子进程生效**——
+> 不改注册表、不改机器策略，子进程退出即失效。参数原样透传，所以两个文件的用法完全一致。
+>
+> 想永久放开（可选，需管理员）：`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+> ——但本机若已受限，通常也不会生效，用 `dev.cmd` 更省事。
 
 > 端口写死在 `vite.config.ts`（3000 和 8000），`-ApiPort` / `-WebPort` 只改后端监听、不改代理目标，脚本会给出警告。
 
@@ -379,16 +434,6 @@ npm install --registry https://registry.npmmirror.com
 
 改前端代码后 `tauri dev` 不会自动刷新——壳加载的是 `frontend\dist\` 的构建产物，要重新 `npm run build` 再重启壳。日常改 UI 用 `dev.ps1` 的 Vite 更快。
 
-### Docker 方式
-
-```powershell
-.\_setup\start.ps1            # 起四个容器
-.\_setup\start.ps1 -Logs      # 跟踪后端日志
-.\_setup\start.ps1 -Stop      # 停
-```
-
-四个容器分别是 Postgres、ChromaDB、后端、前端 nginx。应用在 `http://localhost:3000`，API 在 `http://localhost:8000`。
-
 ---
 
 ## ⚙️ 应用内设置
@@ -398,7 +443,11 @@ npm install --registry https://registry.npmmirror.com
 | 分组 | 作用 |
 | --- | --- |
 | **Language（语言）** | 为当前浏览器在 English 和 中文之间切换界面、校验信息和 AI 答案。勾选 `Use as deployment default` 还会把该选择存为所有新访问者的默认值。 |
-| **API** | 从下拉框选择服务商（DeepSeek / OpenAI / 任何 OpenAI 兼容端点），然后设置 API 密钥、base URL 和模型。模型字段是一个从该端点 `GET /v1/models` 动态填充的下拉框，并保留手动输入的兜底方式。`Test connection` 会在不保存的前提下探测端点连通性。 |
+| **API** | 先选服务商（DeepSeek / OpenAI / 任何 OpenAI 兼容端点）并填好 base URL 与 API 密钥，再点「连接」。连接会用当前表单里的凭据探测 `GET /v1/models`，成功后模型字段才被解锁，并自动填入端点返回列表的第一个模型；未连接时模型字段为空且显示红色状态条，连接成功则转为绿色。密钥可以直接粘贴在输入框里，旁边的密钥菜单负责保存、切换、删除已存凭据。 |
+
+**连接状态会持久化。** 探测结果（是否连通、模型列表、探测时的端点与密钥指纹）存在 `app_settings` 的 `llm_connection` 行里，所以关掉设置再打开，绿色徽章和模型列表还在，不必每次重新证明一遍。密钥本身不会被写进这一行，只存一个 `sk-…128e` 形式的掩码提示。
+
+但绿色徽章不会一直亮着：只要 base URL、服务商或密钥与探测时不一致，接口就把这条记录标成 `stale`，前端按「未连接」处理并显示红色。改完配置却没有重新探测，界面不会假装还连着。侧边栏底部的「浅色模式」下方还有一个连接快捷按钮，绿色代表当前配置可用（并显示正在使用的模型名），红色代表没有可用连接，点一下直接跳到 API 面板。
 
 ### 已保存的 API 密钥
 
@@ -414,21 +463,21 @@ npm install --registry https://registry.npmmirror.com
 这样请求链路就只需一次字典查找。密钥在 API 上是只写的：
 响应中只会出现诸如 `sk-…1a2b` 这样的掩码提示。
 
-这些值存放在 `app_settings` 表中，因此它们**能跨重启保留，并覆盖 `.env` 中的对应项**
-—— 无需重新构建镜像。只有检索到的文档片段会发送给服务商；向量化始终留在本地。
+这些值存放在 `app_settings` 表中，因此它们**能跨重启保留，并覆盖内置默认值**
+—— 无需改任何文件。只有检索到的文档片段会发送给服务商；向量化始终留在本地。
 
-对话框底部的 `Restore defaults` 会删除所有已存储的覆盖项，使 `.env` 配置重新生效。
+对话框底部的 `Restore defaults` 会删除所有已存储的覆盖项，使内置默认值重新生效。
 
 ---
 
 ## 🧪 运行测试
 
-测试套件不属于运行时镜像，因此需要先安装额外依赖：
+测试套件不属于运行时产物，因此需要先安装额外依赖：
 
 ```bash
 # 后端测试
 cd backend
-pip install pytest pytest-asyncio aiosqlite
+pip install -r requirements-dev.txt
 pytest tests/ -v --tb=short
 
 # 前端 lint
@@ -436,36 +485,20 @@ cd frontend
 npm run lint
 ```
 
-`backend/tests/conftest.py` 中的 fixture 使用内存 SQLite，因此不需要
-PostgreSQL 或 ChromaDB 实例。
+`backend/tests/conftest.py` 中的 fixture 使用内存 SQLite，不依赖任何外部服务。
 
 ---
 
-## 🔧 服务管理
+## 🔧 运行与排障
 
-```bash
-# 查看日志
-docker compose logs -f backend
+桌面版的日志由 Tauri 壳转发到启动它的控制台；日常开发时用 `scripts\dev.ps1` 直接看后端输出。
 
-# 重启某个服务
-docker compose restart backend
+```powershell
+.\scripts\dev.cmd -Stop     # 停掉所有相关进程（后端 + Vite）
 
-# 完整停止（保留数据卷）
-docker compose down
-
-# 完整停止 + 删除所有数据
-docker compose down -v
+# 数据目录（删掉即恢复出厂状态）
+Remove-Item -Recurse "$env:APPDATA\RagVault"
 ```
-
-### 可选：Nginx 反向代理
-
-`docker-compose.yml` 中定义了一个 Nginx 服务，但被 Docker Compose profile 挡住了。要启用它：
-
-```bash
-docker compose --profile nginx up -d
-```
-
-Nginx 会在 80 端口提供服务，并同时反向代理后端和前端。
 
 ---
 
@@ -510,31 +543,39 @@ Nginx 会在 80 端口提供服务，并同时反向代理后端和前端。
 
 ```
 RagVault/
-├── frontend/               # React + Vite + TypeScript
+├── frontend/               # React + Vite + TypeScript（构建产物被后端托管）
 │   ├── src/
 │   │   ├── api/            # TanStack Query hooks
 │   │   ├── components/     # UI 组件（shadcn/ui + 自定义）
 │   │   ├── pages/          # 路由页面
 │   │   ├── store/          # Zustand stores
 │   │   ├── types/          # TypeScript 类型
+│   │   ├── lib/desktop.ts  # 本地 API token / 原生另存为
 │   │   └── theme.ts        # 设计系统 token
-│   ├── nginx.conf          # 前端容器的生产环境 Nginx 配置
-│   └── Dockerfile
-├── backend/                # FastAPI 应用
+│   └── vite.config.ts
+├── backend/                # FastAPI 应用（单进程，同时托管 SPA）
 │   ├── app/
 │   │   ├── models/         # SQLAlchemy ORM（user, chat, document, message, quiz, note, memory）
 │   │   ├── schemas/        # Pydantic schema
 │   │   ├── routers/        # FastAPI 路由（auth, chats, documents, messages, quiz, notes）
 │   │   ├── services/       # 业务逻辑（rag, quiz, notes, ingestion, recommendation, auth）
 │   │   ├── utils/          # 解析器、分块器、FastEmbed 向量化、ChromaDB 客户端
-│   │   └── core/           # 认证依赖、安全
-│   ├── alembic/            # 数据库迁移
-│   └── Dockerfile          # python:3.11-slim + Tesseract + ffmpeg
-├── models/                 # 遗留的 GGUF 目录（docker-compose 已不再使用）
-├── docker/
-│   └── nginx.conf          # Nginx 反向代理配置（可选 profile）
-├── docker-compose.yml      # 4 个服务（postgres, chromadb, backend, frontend）
-└── .env.example            # 配置模板
+│   │   ├── core/           # 认证依赖、安全、i18n、SPA 托管
+│   │   ├── desktop_boot.py # 桌面启动：数据目录、端口、RAGVAULT_READY
+│   │   └── main.py
+│   ├── tests/              # pytest（内存 SQLite）
+│   └── ragvault-backend.spec   # PyInstaller 打包配置
+├── src-tauri/              # Tauri v2 壳（Rust）
+│   ├── src/
+│   ├── tauri.conf.json
+│   └── Cargo.toml
+├── scripts/
+│   ├── dev.cmd             # 日常开发入口（绕过脚本执行策略）
+│   ├── dev.ps1             # 实际启动逻辑：后端 + Vite
+│   ├── run_desktop.py      # 单进程启动入口
+│   └── prepare_embedded_models.py
+├── docs/desktop-packaging.md
+└── .env.example            # 仅开发用，安装版不读
 ```
 
 ---

@@ -1,22 +1,15 @@
 """
 Application settings loaded from environment variables / .env file.
 
-Two deployment shapes are supported and share the same settings class:
+RagVault is a Windows desktop application: one process, no containers. SQLite
+holds the relational data, an embedded Chroma store (``PersistentClient``)
+holds the vectors, and every mutable path lives under a single data directory
+that the Tauri shell owns (``%APPDATA%\\RagVault`` unless ``--data-dir`` says
+otherwise). The API also serves the built SPA, so the native window can talk to
+``http://127.0.0.1:PORT`` (see ``docs/desktop-packaging.md``).
 
-``server`` (default)
-    The Docker Compose stack: PostgreSQL for relational data, a ChromaDB HTTP
-    container for vectors, and the nginx container serving the SPA. Every path
-    below defaults to the container mount point.
-
-``embedded`` (``RAGVAULT_EMBEDDED=1``)
-    The desktop build: one process, no containers. SQLite replaces PostgreSQL,
-    ``PersistentClient`` replaces the Chroma HTTP server, and every mutable path
-    moves under a single ``--data-dir`` that the Tauri shell owns. The API also
-    serves the built SPA so the window can talk to ``http://127.0.0.1:PORT``
-    (see ``docs/desktop-packaging.md``).
-
-Embedded mode only rewrites a path when it is still on its server default, so
-an explicit environment variable always wins.
+Paths are derived from ``data_dir`` at construction time; an explicit
+environment variable always wins over the derived default.
 """
 from functools import lru_cache
 import os
@@ -26,28 +19,21 @@ from typing import Any
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# ── Server-mode defaults (the Docker Compose stack) ───────────────────────────
-_DEFAULT_DB_URL = "postgresql+asyncpg://knowledge_user:changeme_strong_password@postgres:5432/knowledge_hub"
-_DEFAULT_CHROMA_PERSIST_DIR = "/chroma_data"
-_DEFAULT_UPLOAD_TEMP_DIR = "/uploads/temp"
-_DEFAULT_HF_HOME = "/hf_cache"
+# ── Directory names under the data directory ──────────────────────────────────
+_DB_FILENAME = "ragvault.db"
+_CHROMA_DIRNAME = "chroma"
+_UPLOADS_DIRNAME = "uploads"
+_MODELS_DIRNAME = "models"
 
-# ── Embedded-mode defaults (relative to the data directory) ───────────────────
-_EMBEDDED_DB_FILENAME = "ragvault.db"
-_EMBEDDED_CHROMA_DIRNAME = "chroma"
-_EMBEDDED_UPLOADS_DIRNAME = "uploads"
-_EMBEDDED_MODELS_DIRNAME = "models"
 # Uploads are streamed to disk in 1 MB chunks, but the parser still holds one
 # whole document in memory; 500 MB is a safe ceiling on a 8-16 GB laptop.
-_EMBEDDED_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 
 
 class Settings(BaseSettings):
-    # ── Deployment shape ──────────────────────────────────────────────────────
-    # "1"/"true" switches on the single-process desktop layout described above.
-    embedded: bool = False
-    # Root of all mutable state in embedded mode (Windows: %APPDATA%\RagVault).
-    # Empty means "current working directory", which is only sensible in tests.
+    # ── Data directory ────────────────────────────────────────────────────────
+    # Root of all mutable state (Windows: %APPDATA%\RagVault). Empty means "the
+    # current working directory", which is only sensible in tests.
     data_dir: str = ""
     # Directory holding the built SPA (index.html + assets). When it exists the
     # API mounts it at "/" and serves index.html for unknown paths, so the
@@ -55,7 +41,9 @@ class Settings(BaseSettings):
     web_dist_dir: str = ""
 
     # ── Relational database ───────────────────────────────────────────────────
-    database_url: str = _DEFAULT_DB_URL
+    # Empty means "the SQLite file inside data_dir"; the validator below fills
+    # it in so the URL always points at the active profile.
+    database_url: str = ""
 
     # ── JWT Auth ──────────────────────────────────────────────────────────────
     jwt_secret: str = "change_this_to_a_long_random_secret_key_at_least_32_chars"
@@ -78,19 +66,13 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_fallback_model: str = "nomic-embed-text"
 
-    # ── ChromaDB ─────────────────────────────────────────────────────────────
-    # "server" probes the HTTP container; "embedded" goes straight to
-    # PersistentClient and skips the heartbeat (saves 1-2s of startup time).
-    chroma_mode: str = "server"
-    chroma_host: str = "chromadb"
-    chroma_port: int = 8000
-    chroma_persist_dir: str = _DEFAULT_CHROMA_PERSIST_DIR
+    # ── ChromaDB (embedded PersistentClient) ──────────────────────────────────
+    # Empty means "<data_dir>/chroma"; the validator below fills it in.
+    chroma_persist_dir: str = ""
 
     # ── File Storage ──────────────────────────────────────────────────────────
-    upload_temp_dir: str = _DEFAULT_UPLOAD_TEMP_DIR
-    # Hard cap for a single upload. The desktop build lowers this because the
-    # file is streamed into memory-adjacent temp space on a user laptop.
-    max_upload_bytes: int = 2 * 1024 * 1024 * 1024
+    upload_temp_dir: str = ""
+    max_upload_bytes: int = _MAX_UPLOAD_BYTES
 
     # ── RAG / Chunking ────────────────────────────────────────────────────────
     chunk_size: int = 600
@@ -99,12 +81,49 @@ class Settings(BaseSettings):
     rag_max_distance: float = 0.38
 
     # ── Shelved capabilities ──────────────────────────────────────────────────
-    # Audio/video transcription (was local Faster-Whisper) and image/scanned-PDF
-    # OCR (was local Tesseract) are parked for now. The parser code is kept so
-    # they can be re-enabled later without rewriting anything: flip these flags
-    # back to true and optionally point the transcribers at a cloud API.
+    # Audio/video transcription (was local Faster-Whisper) is parked for now. The
+    # parser code is kept so it can be re-enabled later without rewriting
+    # anything: flip the flag back to true and install the optional dependencies
+    # listed in backend/requirements.txt.
     enable_audio_video_uploads: bool = False
-    enable_ocr_uploads: bool = False
+
+    # ── PDF parsing pipeline ──────────────────────────────────────────────────
+    # Scanned PDFs are read with a local OCR engine (RapidOCR, ONNX). This is on
+    # by default because a scanned PDF with OCR disabled produces almost no text
+    # and the user has no way to tell why their answers are bad. Set to false to
+    # keep uploads fast and refuse OCR entirely.
+    enable_ocr_uploads: bool = True
+
+    #: ``auto`` prefers RapidOCR (self-contained) and falls back to Tesseract.
+    pdf_ocr_engine: str = "auto"
+    #: Render resolution. 300 DPI is the sweet spot: measured on real scans, the
+    #: recognised character count is essentially identical at 200-400 DPI, so
+    #: higher values only burn CPU.
+    pdf_ocr_dpi: int = 300
+    #: Longest side of the rendered page, in pixels. Downscaling a 300 DPI A4
+    #: render to 1600px costs nothing in accuracy and roughly halves OCR time.
+    pdf_ocr_max_side: int = 1600
+    #: Hard cap on how many pages may be OCR'd per document (0 = no cap). A
+    #: 1400-page scan needs hours of CPU, so the safe answer is a budget rather
+    #: than unbounded work.
+    pdf_ocr_max_pages: int = 0
+    #: onnxruntime intra-op threads per OCR engine. Defaults to 8 rather than
+    #: "one per core": measured on a 16-core machine, the library default took
+    #: 12.4s/page and 8 threads took 7.5s/page for identical output. Capping
+    #: threads beats oversubscribing them. Set 0 to let the library decide.
+    pdf_ocr_threads: int = 8
+    #: Wall-clock ceiling for the OCR stage, in seconds. The remaining pages are
+    #: reported as unread instead of blocking the worker forever.
+    pdf_ocr_time_budget_seconds: int = 1800
+    #: Mean per-block confidence below which a page is flagged for review.
+    pdf_ocr_min_confidence: float = 0.75
+    #: How many preprocessing variants to try per page before giving up.
+    pdf_ocr_max_attempts: int = 3
+    #: A page whose text layer is shorter than this, while being covered by a
+    #: page-sized image, is treated as a scan rather than as real text.
+    pdf_min_text_chars: int = 200
+    #: Extract ruled tables as Markdown so their structure survives chunking.
+    pdf_extract_tables: bool = True
 
     # ── Internationalisation ──────────────────────────────────────────────────
     # Default UI + AI output language: "en" or "zh".
@@ -117,46 +136,39 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # ── HuggingFace Cache ─────────────────────────────────────────────────────
-    hf_home: str = _DEFAULT_HF_HOME
+    # Empty means "<data_dir>/models".
+    hf_home: str = ""
 
     @field_validator("database_url", mode="before")
     @classmethod
     def validate_database_url(cls, v: Any) -> str:
-        if not v or not str(v).strip():
-            return _DEFAULT_DB_URL
-        return str(v)
+        # Only SQLite is supported: the app always runs as a single process, so
+        # a server database would have nothing to serve it.
+        value = str(v or "").strip()
+        if value and not value.startswith("sqlite"):
+            raise ValueError(
+                "DATABASE_URL must be a SQLite URL (sqlite+aiosqlite:///…); "
+                "RagVault runs as a single desktop process with no database server"
+            )
+        return value
 
     @model_validator(mode="after")
-    def apply_embedded_defaults(self) -> "Settings":
-        """Rewrite container paths to data-dir paths when embedded mode is on."""
-        if not self.embedded:
-            return self
-
+    def apply_data_dir_defaults(self) -> "Settings":
+        """Derive every path from ``data_dir`` unless it was set explicitly."""
         root = Path(self.data_dir).expanduser() if self.data_dir else Path.cwd()
 
-        if self.database_url == _DEFAULT_DB_URL:
-            db_path = root / _EMBEDDED_DB_FILENAME
+        if not self.database_url:
+            db_path = root / _DB_FILENAME
             # as_posix() keeps Windows backslashes out of the SQLite URL.
             self.database_url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
-
-        if self.chroma_mode == "server":
-            self.chroma_mode = "embedded"
-        if self.chroma_persist_dir == _DEFAULT_CHROMA_PERSIST_DIR:
-            self.chroma_persist_dir = str(root / _EMBEDDED_CHROMA_DIRNAME)
-        if self.upload_temp_dir == _DEFAULT_UPLOAD_TEMP_DIR:
-            self.upload_temp_dir = str(root / _EMBEDDED_UPLOADS_DIRNAME / "temp")
-        if self.hf_home == _DEFAULT_HF_HOME:
-            self.hf_home = str(root / _EMBEDDED_MODELS_DIRNAME)
-        # A laptop is not a server: 2 GB single files push the process into swap
-        # while the PDF parser holds the whole document in memory.
-        if self.max_upload_bytes > _EMBEDDED_MAX_UPLOAD_BYTES:
-            self.max_upload_bytes = _EMBEDDED_MAX_UPLOAD_BYTES
+        if not self.chroma_persist_dir:
+            self.chroma_persist_dir = str(root / _CHROMA_DIRNAME)
+        if not self.upload_temp_dir:
+            self.upload_temp_dir = str(root / _UPLOADS_DIRNAME / "temp")
+        if not self.hf_home:
+            self.hf_home = str(root / _MODELS_DIRNAME)
 
         return self
-
-    @property
-    def is_sqlite(self) -> bool:
-        return self.database_url.startswith("sqlite")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -168,7 +180,7 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """Return singleton Settings instance (cached after first call)."""
-    # The desktop launcher sets RAGVAULT_ENV_FILE="" so the developer's Docker
-    # `.env` (Postgres URL, container paths) cannot leak into a desktop profile.
+    # The desktop launcher sets RAGVAULT_ENV_FILE="" so a developer's `.env`
+    # (an API key, a language override) cannot leak into a packaged profile.
     env_file = os.environ.get("RAGVAULT_ENV_FILE", ".env").strip()
     return Settings(_env_file=env_file or None)

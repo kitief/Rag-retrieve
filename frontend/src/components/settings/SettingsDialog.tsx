@@ -6,9 +6,11 @@
  * **Language** (interface + AI output language) and **API** (model provider
  * credentials) — and new groups only need another ``NAV_ITEMS`` entry.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
+  AlertCircle,
   Check,
+  CheckCircle2,
   Cpu,
   ExternalLink,
   Globe2,
@@ -16,7 +18,6 @@ import {
   Loader2,
   PlugZap,
   Plus,
-  RefreshCw,
   RotateCcw,
   Trash2,
   X,
@@ -39,6 +40,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/use-toast'
 import { useT } from '@/i18n/useT'
 import {
@@ -48,12 +57,11 @@ import {
   type Language,
 } from '@/i18n'
 import {
+  useConnectLlm,
   useCreateApiKey,
   useDeleteApiKey,
-  useLlmModels,
   useResetSettings,
   useSettings,
-  useTestLlm,
   useUpdateApiKey,
   useUpdateSettings,
   type SettingsResponse,
@@ -108,7 +116,7 @@ export function SettingsDialog({
   const { data, isLoading, isError } = useSettings(open)
   const updateSettings = useUpdateSettings()
   const resetSettings = useResetSettings()
-  const testLlm = useTestLlm()
+  const connectLlm = useConnectLlm()
   const createApiKey = useCreateApiKey()
   const updateApiKey = useUpdateApiKey()
   const deleteApiKey = useDeleteApiKey()
@@ -118,23 +126,62 @@ export function SettingsDialog({
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
   const [apiKey, setApiKey] = useState('')
-  const [keyLabel, setKeyLabel] = useState('')
   const [manualModel, setManualModel] = useState(false)
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  /**
+   * Models the endpoint returned for the *current* connection attempt.
+   *
+   * Deliberately empty until "Connect" succeeds: a model name that was never
+   * verified against the endpoint is the single most common way to save a
+   * broken configuration, so the field starts blank and is filled with the
+   * first model the endpoint advertises.
+   */
+  const [connectedModels, setConnectedModels] = useState<string[]>([])
+  const [connection, setConnection] = useState<{ ok: boolean; message: string } | null>(null)
 
   const seedFrom = (payload: SettingsResponse | undefined) => {
     if (!payload) return
     setProvider(payload.llm.provider)
     setBaseUrl(payload.llm.base_url)
-    setModel(payload.llm.model)
     setApiKey('')
-    setKeyLabel('')
     setManualModel(false)
-    setTestResult(null)
+
+    // The last probe is persisted server-side, so reopening the dialog shows the
+    // same green badge instead of asking the user to prove again what the backend
+    // already knows. A stale probe (endpoint or key changed since) is discarded.
+    const stored = payload.llm.connection
+    if (stored && stored.ok && !stored.stale) {
+      setConnectedModels(stored.models)
+      setConnection({ ok: true, message: stored.message })
+      // Remember a confirmed model, but never resurrect one the endpoint did not
+      // advertise — that is exactly the unverified name this panel avoids.
+      const remembered = payload.llm.model
+      setModel(remembered && stored.models.includes(remembered) ? remembered : stored.models[0] ?? '')
+      setManualModel(stored.models.length === 0)
+    } else {
+      // Nothing trustworthy to restore: the model stays blank until "Connect".
+      setModel('')
+      setConnectedModels([])
+      setConnection(stored ? { ok: false, message: stored.message } : null)
+    }
   }
 
+  /**
+   * Seed the form exactly once per opening.
+   *
+   * A plain ``[open, data]`` effect would re-run on every background refetch —
+   * including the one triggered right after saving a key — and would wipe the
+   * model the user just picked from the dropdown. The ref makes the seed a
+   * one-shot per dialog opening; everything the user typed survives refetches.
+   */
+  const seededRef = useRef(false)
   useEffect(() => {
-    if (open) seedFrom(data)
+    if (!open) {
+      seededRef.current = false
+      return
+    }
+    if (!data || seededRef.current) return
+    seededRef.current = true
+    seedFrom(data)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, data])
 
@@ -154,34 +201,54 @@ export function SettingsDialog({
   )
 
   // ── Model discovery ──────────────────────────────────────────────────────
-  // Only ask the endpoint while the API panel is visible; the request costs a
-  // round trip and depends on the credentials that are currently saved.
-  const modelsQuery = useLlmModels(open && section === 'api')
-  const availableModels = modelsQuery.data?.models ?? []
-
+  // There is no background fetch: the list only exists after an explicit
+  // "Connect", so the dropdown can never offer a model the endpoint rejected.
+  const connected = connection?.ok === true
   const modelChoices = useMemo(() => {
-    const set = new Set(availableModels)
+    const set = new Set(connectedModels)
     if (model.trim()) set.add(model.trim())
     return Array.from(set)
-  }, [availableModels, model])
+  }, [connectedModels, model])
 
   const handleProviderChange = (nextProvider: string) => {
     setProvider(nextProvider)
     const preset = providerOptions.find((item) => item.name === nextProvider)
-    if (preset) {
-      setBaseUrl(preset.base_url)
-      setModel(preset.model)
+    if (preset) setBaseUrl(preset.base_url)
+    // Switching provider invalidates the previous connection.
+    setModel('')
+    setConnectedModels([])
+    setConnection(null)
+  }
+
+  /** Probe the endpoint with the credentials in the form and fill the dropdown. */
+  const handleConnect = async () => {
+    setConnection(null)
+    try {
+      const result = await connectLlm.mutateAsync({
+        llm_provider: provider || 'custom',
+        llm_base_url: baseUrl.trim(),
+        // An empty field means "use the stored key" — same rule as saving.
+        llm_api_key: apiKey.trim() || null,
+      })
+      setConnectedModels(result.models)
+      setModel(result.models[0] ?? '')
+      setManualModel(result.models.length === 0)
+      setConnection({ ok: result.ok, message: result.message })
+    } catch {
+      setConnectedModels([])
+      setModel('')
+      setConnection({ ok: false, message: t('settings.connectFailedShort') })
     }
-    setTestResult(null)
   }
 
   const handleSave = async () => {
     try {
-      const payload: Record<string, string> = {
-        llm_provider: provider,
-        llm_base_url: baseUrl.trim(),
-        llm_model: model.trim(),
-      }
+      const payload: Record<string, string> = { llm_provider: provider }
+      // Only send values the user actually filled in: the API treats an empty
+      // string as "delete the stored override", which would silently reset a
+      // working endpoint just because a field was left blank.
+      if (baseUrl.trim()) payload.llm_base_url = baseUrl.trim()
+      if (model.trim()) payload.llm_model = model.trim()
       // An empty field means "keep the stored key"; only send when typed.
       if (apiKey.trim()) payload.llm_api_key = apiKey.trim()
 
@@ -197,27 +264,12 @@ export function SettingsDialog({
     }
   }
 
-  const handleTest = async () => {
-    const payload: Record<string, string> = {
-      llm_provider: provider,
-      llm_base_url: baseUrl.trim(),
-      llm_model: model.trim(),
-    }
-    if (apiKey.trim()) payload.llm_api_key = apiKey.trim()
-    try {
-      const result = await testLlm.mutateAsync(payload)
-      setTestResult({ ok: result.ok, message: result.message })
-    } catch {
-      setTestResult({ ok: false, message: t('settings.saveFailed') })
-    }
-  }
-
   /**
    * Store the typed key in the vault and activate it in one step.
    *
    * Saving through the vault (instead of only through ``PUT /settings``) is
-   * what makes the key reusable later: the dropdown above lists every saved
-   * key so switching back and forth never needs a retype.
+   * what makes the key reusable later: the menu beside the input lists every
+   * saved key so switching back and forth never needs a retype.
    */
   const handleSaveKey = async () => {
     const value = apiKey.trim()
@@ -232,12 +284,11 @@ export function SettingsDialog({
     try {
       await createApiKey.mutateAsync({
         provider: provider || 'custom',
-        label: keyLabel.trim(),
+        label: '',
         value,
         activate: true,
       })
       setApiKey('')
-      setKeyLabel('')
       toast({ title: t('settings.keySaved'), description: t('settings.keySavedDesc') })
     } catch {
       toast({
@@ -479,54 +530,30 @@ export function SettingsDialog({
                     </p>
                   </div>
 
-                  {/* Saved keys — switch between them */}
+                  {/* Base URL */}
                   <div className="space-y-1.5">
-                    <Label htmlFor="settings-saved-keys" className="text-xs">
-                      {t('settings.savedKeys')}
+                    <Label htmlFor="settings-base-url" className="text-xs">
+                      {t('settings.baseUrl')}
                     </Label>
-                    {savedKeys.length === 0 ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        {t('settings.savedKeysEmpty')}
-                      </p>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <Select
-                          value={activeKey?.id ?? ''}
-                          onValueChange={handleActivateKey}
-                        >
-                          <SelectTrigger
-                            id="settings-saved-keys"
-                            aria-label={t('settings.savedKeys')}
-                            className="flex-1"
-                          >
-                            <SelectValue placeholder={t('settings.keyPick')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {savedKeys.map((item) => (
-                              <SelectItem key={item.id} value={item.id}>
-                                {`${item.label} · ${item.hint}`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {activeKey && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-9 w-9 flex-shrink-0 text-muted-foreground hover:text-destructive"
-                            title={t('settings.keyDelete')}
-                            aria-label={t('settings.keyDelete')}
-                            onClick={() => handleDeleteKey(activeKey.id)}
-                            disabled={deleteApiKey.isPending}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    )}
+                    <Input
+                      id="settings-base-url"
+                      className="h-9 text-sm"
+                      value={baseUrl}
+                      onChange={(event) => {
+                        setBaseUrl(event.target.value)
+                        // The previous connection no longer describes this endpoint.
+                        setConnectedModels([])
+                        setModel('')
+                        setConnection(null)
+                      }}
+                      placeholder="https://api.deepseek.com/v1"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      {t('settings.baseUrlHint')}
+                    </p>
                   </div>
 
-                  {/* Add a key */}
+                  {/* API key + saved-keys menu, side by side */}
                   <div className="space-y-1.5">
                     <Label htmlFor="settings-api-key" className="text-xs">
                       {t('settings.apiKey')}
@@ -545,27 +572,72 @@ export function SettingsDialog({
                         value={apiKey}
                         onChange={(event) => setApiKey(event.target.value)}
                       />
-                      <Input
-                        className="h-9 w-40 text-sm"
-                        placeholder={t('settings.keyLabelPlaceholder')}
-                        aria-label={t('settings.keyLabel')}
-                        value={keyLabel}
-                        onChange={(event) => setKeyLabel(event.target.value)}
-                      />
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="h-9 flex-shrink-0 text-xs"
-                        onClick={handleSaveKey}
-                        disabled={createApiKey.isPending}
-                      >
-                        {createApiKey.isPending ? (
-                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <KeyRound className="mr-1.5 h-3.5 w-3.5" />
-                        )}
-                        {t('settings.saveKey')}
-                      </Button>
+
+                      {/* Saved keys and "save this key" live together in one menu */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 flex-shrink-0 gap-1.5 text-xs"
+                          >
+                            <KeyRound className="h-3.5 w-3.5" />
+                            <span className="max-w-[9rem] truncate">
+                              {activeKey ? activeKey.hint : t('settings.keyMenu')}
+                            </span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                          <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">
+                            {t('settings.savedKeys')}
+                          </DropdownMenuLabel>
+                          {savedKeys.length === 0 ? (
+                            <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                              {t('settings.savedKeysEmpty')}
+                            </p>
+                          ) : (
+                            savedKeys.map((item) => (
+                              <DropdownMenuItem
+                                key={item.id}
+                                onSelect={() => void handleActivateKey(item.id)}
+                                className="gap-2 text-xs"
+                              >
+                                <Check
+                                  className={`h-3.5 w-3.5 flex-shrink-0 ${
+                                    item.active ? 'text-primary' : 'opacity-0'
+                                  }`}
+                                />
+                                <span className="min-w-0 flex-1 truncate">
+                                  {item.label} · {item.hint}
+                                </span>
+                              </DropdownMenuItem>
+                            ))
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onSelect={() => void handleSaveKey()}
+                            disabled={!apiKey.trim() || createApiKey.isPending}
+                            className="gap-2 text-xs"
+                          >
+                            {createApiKey.isPending ? (
+                              <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" />
+                            ) : (
+                              <Plus className="h-3.5 w-3.5 flex-shrink-0" />
+                            )}
+                            {t('settings.saveCurrentKey')}
+                          </DropdownMenuItem>
+                          {activeKey && (
+                            <DropdownMenuItem
+                              onSelect={() => void handleDeleteKey(activeKey.id)}
+                              disabled={deleteApiKey.isPending}
+                              className="gap-2 text-xs text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 flex-shrink-0" />
+                              {t('settings.keyDelete')}
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                     <p className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
                       {data?.llm.api_key_set
@@ -588,142 +660,114 @@ export function SettingsDialog({
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="settings-base-url" className="text-xs">
-                        {t('settings.baseUrl')}
-                      </Label>
-                      <Input
-                        id="settings-base-url"
-                        className="h-9 text-sm"
-                        value={baseUrl}
-                        onChange={(event) => setBaseUrl(event.target.value)}
-                        placeholder="https://api.deepseek.com/v1"
-                      />
-                      <p className="text-[10px] text-muted-foreground">
-                        {t('settings.baseUrlHint')}
-                      </p>
-                    </div>
-
-                    {/* Model — dropdown fed by GET /models, with a manual escape hatch */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="settings-model" className="text-xs">
-                          {t('settings.model')}
-                        </Label>
-                        <button
-                          type="button"
-                          onClick={() => modelsQuery.refetch()}
-                          title={t('settings.modelsRefresh')}
-                          aria-label={t('settings.modelsRefresh')}
-                          className="rounded p-0.5 text-muted-foreground transition hover:text-foreground"
-                        >
-                          <RefreshCw
-                            className={`h-3 w-3 ${modelsQuery.isFetching ? 'animate-spin' : ''}`}
-                          />
-                        </button>
-                      </div>
-
-                      {manualModel || modelChoices.length === 0 ? (
-                        <div className="space-y-1">
+                  {/* Model — stays empty until "Connect" confirms the endpoint */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="settings-model" className="text-xs">
+                      {t('settings.model')}
+                    </Label>
+                    <div className="flex items-center gap-1.5">
+                      {connected ? (
+                        manualModel || modelChoices.length === 0 ? (
                           <Input
                             id="settings-model"
-                            className="h-9 text-sm"
+                            className="h-9 flex-1 text-sm"
                             value={model}
                             onChange={(event) => setModel(event.target.value)}
                             placeholder="deepseek-chat"
                           />
-                          {modelChoices.length > 0 && (
-                            <button
-                              type="button"
-                              className="text-[10px] text-primary hover:underline"
-                              onClick={() => setManualModel(false)}
+                        ) : (
+                          <Select
+                            value={model}
+                            onValueChange={(next) => {
+                              if (next === MANUAL_MODEL) {
+                                setManualModel(true)
+                                return
+                              }
+                              setModel(next)
+                            }}
+                          >
+                            <SelectTrigger
+                              id="settings-model"
+                              aria-label={t('settings.model')}
+                              className="h-9 flex-1"
                             >
-                              {t('settings.modelPick')} ▾
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <Select
-                          value={model}
-                          onValueChange={(next) => {
-                            if (next === MANUAL_MODEL) {
-                              setManualModel(true)
-                              return
-                            }
-                            setModel(next)
-                            setTestResult(null)
-                          }}
-                        >
-                          <SelectTrigger id="settings-model" aria-label={t('settings.model')}>
-                            <SelectValue placeholder={t('settings.model')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {modelChoices.map((name) => (
-                              <SelectItem key={name} value={name}>
-                                {name}
+                              <SelectValue placeholder={t('settings.modelPick')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {modelChoices.map((name) => (
+                                <SelectItem key={name} value={name}>
+                                  {name}
+                                </SelectItem>
+                              ))}
+                              <SelectSeparator />
+                              <SelectItem value={MANUAL_MODEL}>
+                                <span className="inline-flex items-center gap-1">
+                                  <Plus className="h-3 w-3" />
+                                  {t('settings.modelManual')}
+                                </span>
                               </SelectItem>
-                            ))}
-                            <SelectSeparator />
-                            <SelectItem value={MANUAL_MODEL}>
-                              <span className="inline-flex items-center gap-1">
-                                <Plus className="h-3 w-3" />
-                                {t('settings.modelManual')}
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                            </SelectContent>
+                          </Select>
+                        )
+                      ) : (
+                        <Input
+                          id="settings-model"
+                          className="h-9 flex-1 text-sm"
+                          value=""
+                          readOnly
+                          disabled
+                          placeholder={t('settings.modelConnectFirst')}
+                        />
                       )}
 
-                      <p className="text-[10px] text-muted-foreground">
-                        {modelsQuery.isLoading
-                          ? t('settings.modelsLoading')
-                          : modelsQuery.data?.source === 'unavailable'
-                            ? t('settings.modelsUnavailable')
-                            : modelChoices.length === 0
-                              ? t('settings.modelsEmpty')
-                              : t('settings.modelHint')}
-                      </p>
+                      <Button
+                        variant={connected ? 'outline' : 'secondary'}
+                        size="sm"
+                        className="h-9 flex-shrink-0 gap-1.5 text-xs"
+                        onClick={handleConnect}
+                        disabled={connectLlm.isPending}
+                      >
+                        {connectLlm.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <PlugZap className="h-3.5 w-3.5" />
+                        )}
+                        {connectLlm.isPending
+                          ? t('settings.connecting')
+                          : connected
+                            ? t('settings.reconnect')
+                            : t('settings.connect')}
+                      </Button>
                     </div>
+
+                    <p className="text-[10px] text-muted-foreground">
+                      {connected
+                        ? modelChoices.length === 0
+                          ? t('settings.modelsEmpty')
+                          : t('settings.modelHint')
+                        : t('settings.modelConnectFirst')}
+                    </p>
                   </div>
 
-                  {data && (
-                    <div className="rounded-lg border border-white/10 px-3 py-2.5">
-                      <p className="text-[11px] font-medium text-muted-foreground">
-                        {t('settings.advanced')}
-                      </p>
-                      <div className="mt-1.5 grid grid-cols-3 gap-2 text-[11px]">
-                        <span className="text-muted-foreground">
-                          {t('settings.timeout')}
-                          <span className="ml-1 text-foreground">
-                            {data.llm.timeout_seconds}s
-                          </span>
-                        </span>
-                        <span className="text-muted-foreground">
-                          {t('settings.retries')}
-                          <span className="ml-1 text-foreground">{data.llm.max_retries}</span>
-                        </span>
-                        <span className="text-muted-foreground">
-                          {t('settings.concurrency')}
-                          <span className="ml-1 text-foreground">
-                            {data.llm.max_concurrency}
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  {testResult && (
-                    <p
-                      className={`rounded-md border px-3 py-2 text-[11px] ${
-                        testResult.ok
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                          : 'border-destructive/30 bg-destructive/10 text-destructive'
-                      }`}
-                    >
-                      {testResult.message}
-                    </p>
-                  )}
+                  {/* Connection status — red until a probe succeeds, green after */}
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className={`flex items-start gap-2 rounded-md border px-3 py-2 text-[11px] ${
+                      connection?.ok
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                        : 'border-destructive/30 bg-destructive/10 text-destructive'
+                    }`}
+                  >
+                    {connection?.ok ? (
+                      <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                    ) : (
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                    )}
+                    <span className="min-w-0">
+                      {connection?.message ?? t('settings.notConnected')}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -733,20 +777,9 @@ export function SettingsDialog({
             <div className="flex items-center justify-between gap-2 border-t border-white/10 px-6 py-3">
               {section === 'api' ? (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-muted-foreground hover:text-foreground"
-                    onClick={handleTest}
-                    disabled={testLlm.isPending}
-                  >
-                    {testLlm.isPending ? (
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <PlugZap className="mr-1.5 h-3.5 w-3.5" />
-                    )}
-                    {testLlm.isPending ? t('settings.testing') : t('settings.test')}
-                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    {connected ? t('settings.connectedHint') : t('settings.notConnectedHint')}
+                  </span>
                   <Button
                     size="sm"
                     className="text-xs"

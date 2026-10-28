@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Brain, MessageSquare, Plus, Search, LogOut, ChevronLeft, History, Sun, Moon, Trash2, Pencil, Check, X, Settings
+  Brain, MessageSquare, Plus, Search, LogOut, ChevronLeft, History, Sun, Moon, Trash2, Pencil, Check, X, Settings,
+  PlugZap, Plug
 } from 'lucide-react'
 import { useChats, useCreateChat, useDeleteChat, useUpdateChat } from '@/api/chats'
 import { useAuthStore } from '@/store/authStore'
@@ -147,6 +148,22 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   const dismissFirstRun = () => {
     window.localStorage.setItem(FIRST_RUN_FLAG, '1')
+  }
+
+  /**
+   * Whether the AI endpoint is actually reachable.
+   *
+   * The stored probe is the only honest source: a key merely being present says
+   * nothing about whether the endpoint accepts it, and a probe recorded against
+   * an older base URL or key is returned as ``stale``. Both cases show red.
+   */
+  const connection = settingsData?.llm.connection
+  const isConnected = Boolean(connection?.ok) && !connection?.stale
+  const connectedModel = isConnected ? settingsData?.llm.model ?? '' : ''
+
+  const openApiSettings = () => {
+    setSettingsSection('api')
+    setSettingsOpen(true)
   }
 
   return (
@@ -344,6 +361,43 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 </>
               )}
             </Button>
+
+            {/* Connection shortcut — red means the endpoint was never verified,
+                green means a probe succeeded and is still describing the config
+                in use. Clicking it jumps straight to the API panel. */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openApiSettings}
+              data-testid="sidebar-connection"
+              data-connected={isConnected ? 'true' : 'false'}
+              className={`w-full justify-start text-xs h-8 ${
+                isConnected
+                  ? 'text-emerald-400 hover:text-emerald-300'
+                  : 'text-destructive hover:text-destructive'
+              }`}
+              title={
+                isConnected
+                  ? t('sidebar.connectionHintOn', { base_url: connection?.base_url ?? '' })
+                  : t('sidebar.connectionHintOff')
+              }
+            >
+              {isConnected ? (
+                <>
+                  <PlugZap className="w-3.5 h-3.5 mr-2" />
+                  <span className="truncate">
+                    {connectedModel
+                      ? t('sidebar.connectionOn', { model: connectedModel })
+                      : t('sidebar.connection')}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Plug className="w-3.5 h-3.5 mr-2" />
+                  {t('sidebar.connectionOff')}
+                </>
+              )}
+            </Button>
           </div>
         ) : (
           <div className="border-t border-white/10 p-2 flex flex-col items-center gap-1">
@@ -360,6 +414,17 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               title={theme === 'dark' ? t('sidebar.switchToLight') : t('sidebar.switchToDark')}
             >
               {theme === 'dark' ? <Moon className="w-4 h-4 text-blue-500" /> : <Sun className="w-4 h-4 text-amber-400" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={openApiSettings}
+              data-testid="sidebar-connection-collapsed"
+              data-connected={isConnected ? 'true' : 'false'}
+              className={`w-8 h-8 ${isConnected ? 'text-emerald-400 hover:text-emerald-300' : 'text-destructive hover:text-destructive'}`}
+              title={isConnected ? t('sidebar.connectionOn', { model: connectedModel }) : t('sidebar.connectionOff')}
+            >
+              {isConnected ? <PlugZap className="w-4 h-4" /> : <Plug className="w-4 h-4" />}
             </Button>
           </div>
         )}

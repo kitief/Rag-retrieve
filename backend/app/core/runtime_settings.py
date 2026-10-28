@@ -1,11 +1,11 @@
 """
 Runtime settings overrides.
 
-Deployment-wide defaults come from environment variables (`.env` ->
+Built-in defaults come from environment variables (`.env` ->
 `app.config.Settings`). The settings dialog in the web UI lets a user override a
-few of them at runtime without rebuilding the containers; those overrides are
-persisted in the ``app_settings`` table and cached here in memory so the hot
-paths (`resolve_llm_config`, `i18n.configured_language`) stay synchronous.
+few of them at runtime without editing files; those overrides are persisted in
+the ``app_settings`` table and cached here in memory so the hot paths
+(`resolve_llm_config`, `i18n.configured_language`) stay synchronous.
 
 Precedence is: runtime override > environment variable > built-in default.
 """

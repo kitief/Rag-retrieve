@@ -1,16 +1,40 @@
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FileText, Presentation, Video, Music, Trash2, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import {
+  FileText,
+  Presentation,
+  FileType2,
+  FileCode2,
+  Table2,
+  Video,
+  Music,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  ScanLine,
+  AlertTriangle,
+  ScrollText,
+} from 'lucide-react'
 import { useDocuments, useDeleteDocument } from '@/api/documents'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
 import { useT } from '@/i18n/useT'
+import { ParseAuditDialog } from './ParseAuditDialog'
 import type { Document } from '@/types'
+import type { MessageKey } from '@/i18n/messages'
 
 const fileIcon = (rawExt: string) => {
   const ext = rawExt.startsWith('.') ? rawExt.toLowerCase() : `.${rawExt.toLowerCase()}`
   if (ext === '.pdf') return <FileText className="w-4 h-4 text-red-400" />
   if (ext === '.pptx' || ext === '.ppt') return <Presentation className="w-4 h-4 text-orange-400" />
+  // file_type is stored without the leading dot (see documents.py), so both
+  // spellings have to be handled.
+  if (ext === '.docx' || ext === '.doc') return <FileType2 className="w-4 h-4 text-blue-400" />
+  if (ext === '.csv' || ext === '.tsv') return <Table2 className="w-4 h-4 text-cyan-400" />
+  if (ext === '.md' || ext === '.markdown') return <FileCode2 className="w-4 h-4 text-green-400" />
+  if (ext === '.txt' || ext === '.text') return <FileText className="w-4 h-4 text-slate-300" />
   if (['.mp4', '.mkv', '.mov', '.avi', '.webm'].includes(ext)) return <Video className="w-4 h-4 text-blue-400" />
   return <Music className="w-4 h-4 text-green-400" />
 }
@@ -34,6 +58,82 @@ const StatusBadge = ({ status }: { status: Document['status'] }) => {
   )
 }
 
+/**
+ * Progress for a document that is still being parsed.
+ *
+ * A scanned book can take minutes of OCR, and a bare spinner gives no way to
+ * tell "still working" from "stuck". The stage comes from the pipeline itself
+ * (`audit` → `ocr` → `finalize` → `chunk` → `embed` → `store`), so the label
+ * says what is actually happening.
+ */
+const ProgressLine = ({ doc }: { doc: Document }) => {
+  const t = useT()
+  const percent = Math.max(0, Math.min(100, doc.progress ?? 0))
+  const stageKey = `doc.stage.${doc.progress_stage ?? 'parse'}` as MessageKey
+  const label = t('doc.progressLabel', { stage: t(stageKey), percent })
+
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+        <motion.div
+          className="h-full rounded-full bg-primary"
+          initial={{ width: 0 }}
+          animate={{ width: `${percent}%` }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+        />
+      </div>
+      <p className="text-[10px] text-muted-foreground truncate">{label}</p>
+    </div>
+  )
+}
+
+/**
+ * Compact summary of the parse audit, clickable to open the full report.
+ *
+ * Only rendered when the pipeline produced an audit (i.e. PDFs) and something
+ * about it is worth knowing: OCR was used, pages were left unread, or the
+ * recognizer was unsure. A clean digital PDF gets no badge at all -- there is
+ * nothing to act on.
+ */
+const AuditBadges = ({ doc, onOpen }: { doc: Document; onOpen: () => void }) => {
+  const t = useT()
+  const audit = doc.parse_audit
+  if (!audit) return null
+
+  const unread = audit.ocr_skipped_pages + audit.ocr_failed_pages
+  const lowConf = audit.low_confidence_pages.length
+  if (audit.ocr_pages === 0 && unread === 0 && lowConf === 0 && !audit.ocr_truncated) return null
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={t('doc.audit.open')}
+      className="flex flex-wrap items-center gap-1 rounded transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {audit.ocr_pages > 0 && (
+        <Badge className="text-[10px] bg-sky-500/15 text-sky-400 border-sky-500/30 gap-1">
+          <ScanLine className="w-2.5 h-2.5" />
+          {t('doc.audit.badgeOcr', { count: audit.ocr_pages })}
+        </Badge>
+      )}
+      {(unread > 0 || audit.ocr_truncated) && (
+        <Badge className="text-[10px] bg-destructive/15 text-destructive border-destructive/30 gap-1">
+          <AlertTriangle className="w-2.5 h-2.5" />
+          {t('doc.audit.badgeUnread', { count: unread })}
+        </Badge>
+      )}
+      {lowConf > 0 && (
+        <Badge className="text-[10px] bg-amber-500/15 text-amber-400 border-amber-500/30 gap-1">
+          <AlertTriangle className="w-2.5 h-2.5" />
+          {t('doc.audit.badgeLowConf', { count: lowConf })}
+        </Badge>
+      )}
+      <ScrollText className="w-3 h-3 text-muted-foreground" />
+    </button>
+  )
+}
+
 interface DocumentListProps {
   chatId: string
 }
@@ -46,6 +146,7 @@ export function DocumentList({ chatId }: DocumentListProps) {
   })
   const deleteDoc = useDeleteDocument(chatId)
   const { toast } = useToast()
+  const [auditDoc, setAuditDoc] = useState<Document | null>(null)
 
   const docs = data?.documents ?? []
 
@@ -69,7 +170,8 @@ export function DocumentList({ chatId }: DocumentListProps) {
   }
 
   return (
-    <div className="space-y-1.5 w-full">
+    <>
+      <div className="space-y-1.5 w-full">
       <AnimatePresence>
         {docs.map((doc) => (
           <motion.div
@@ -89,7 +191,16 @@ export function DocumentList({ chatId }: DocumentListProps) {
                     {t('doc.chunks', { count: doc.total_chunks })}
                   </span>
                 )}
+                {doc.status === 'processed' && (
+                  <AuditBadges doc={doc} onOpen={() => setAuditDoc(doc)} />
+                )}
               </div>
+              {doc.status === 'processing' && <ProgressLine doc={doc} />}
+              {doc.status === 'failed' && doc.error_message && (
+                <p className="mt-1 text-[10px] text-destructive/80 leading-snug break-words">
+                  {doc.error_message}
+                </p>
+              )}
             </div>
             <Button
               variant="ghost"
@@ -102,6 +213,14 @@ export function DocumentList({ chatId }: DocumentListProps) {
           </motion.div>
         ))}
       </AnimatePresence>
-    </div>
+      </div>
+
+      <ParseAuditDialog
+        open={auditDoc !== null}
+        onOpenChange={(open) => { if (!open) setAuditDoc(null) }}
+        audit={auditDoc?.parse_audit ?? null}
+        filename={auditDoc?.filename ?? ''}
+      />
+    </>
   )
 }

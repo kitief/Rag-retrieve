@@ -14,7 +14,9 @@ only: the GET responses only report whether one is configured and a short hint.
 """
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -36,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 _LANGUAGE_KEY = "app_language"
 _SECRET_KEYS = {"llm_api_key"}
+_CONNECTION_KEY = "llm_connection"
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -44,6 +47,28 @@ class LanguageSettings(BaseModel):
     current: str
     supported: list[str]
     source: str
+
+
+class ConnectionState(BaseModel):
+    """
+    The last connection probe, persisted so it survives closing the dialog.
+
+    Without this the panel forgot every successful probe the moment it was
+    reopened: the model field went blank again and the user had no way to tell a
+    working configuration from a broken one — even though the stored key kept
+    answering questions. ``stale`` is set when the saved provider/base URL/key
+    no longer match what was probed, so an old green light cannot outlive an
+    edit.
+    """
+
+    ok: bool
+    message: str
+    provider: str
+    base_url: str
+    models: list[str] = []
+    checked_at: str | None = None
+    stale: bool = False
+    key_hint: str = ""
 
 
 class LLMSettings(BaseModel):
@@ -55,6 +80,7 @@ class LLMSettings(BaseModel):
     timeout_seconds: float
     max_retries: int
     max_concurrency: int
+    connection: ConnectionState | None = None
 
 
 class ProviderInfo(BaseModel):
@@ -135,6 +161,25 @@ class SettingsTestResponse(BaseModel):
     base_url: str
 
 
+class ConnectRequest(BaseModel):
+    """Credentials typed into the dialog, used to probe an endpoint before saving."""
+
+    llm_provider: str | None = None
+    llm_base_url: str | None = None
+    llm_api_key: str | None = None
+
+
+class ConnectResponse(BaseModel):
+    """Result of one connection attempt: reachable or not, plus the model list."""
+
+    ok: bool
+    message: str
+    provider: str
+    base_url: str
+    models: list[str] = []
+    source: str = "endpoint"
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _mask(api_key: str) -> str:
@@ -193,6 +238,52 @@ async def _activate_api_key(db: AsyncSession, value: str) -> None:
     await _load_overrides(db)
 
 
+async def _store_connection(db: AsyncSession, state: ConnectionState) -> None:
+    """Remember the outcome of a probe so reopening the dialog shows it again."""
+    payload = state.model_dump_json()
+    existing = await db.get(AppSetting, _CONNECTION_KEY)
+    if existing is None:
+        db.add(AppSetting(key=_CONNECTION_KEY, value=payload))
+    else:
+        existing.value = payload
+    await db.commit()
+
+
+async def _read_connection(db: AsyncSession, resolved) -> ConnectionState | None:
+    """
+    Load the last probe, flagging it stale if the configuration has moved on.
+
+    A stored "connected" that was recorded against a different base URL, model or
+    key is actively misleading — the panel would show green while the runtime
+    used something else — so it is returned with ``stale=True`` and the UI treats
+    it as not connected.
+    """
+    row = await db.get(AppSetting, _CONNECTION_KEY)
+    if row is None or not (row.value or "").strip():
+        return None
+    try:
+        state = ConnectionState.model_validate_json(row.value)
+    except Exception:  # noqa: BLE001 - a corrupt row must not break the panel
+        logger.warning("[settings] stored connection state is unreadable; ignoring it")
+        return None
+
+    same_base = state.base_url.strip().rstrip("/") == (resolved.base_url or "").strip().rstrip("/")
+    same_provider = state.provider == resolved.provider
+    # Compare the masked tail rather than the secret: a probe recorded against a
+    # different key must not keep its green light.
+    same_key = (state.key_hint or "") == _mask(resolved.api_key or "")
+    state.stale = not (same_base and same_provider and same_key and bool(resolved.api_key))
+    return state
+
+
+async def _clear_connection(db: AsyncSession) -> None:
+    """Drop the remembered probe (configuration reset)."""
+    existing = await db.get(AppSetting, _CONNECTION_KEY)
+    if existing is not None:
+        await db.delete(existing)
+        await db.commit()
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @router.get("", response_model=SettingsResponse)
@@ -232,6 +323,7 @@ async def read_settings(
             timeout_seconds=resolved.timeout,
             max_retries=resolved.max_retries,
             max_concurrency=resolved.max_concurrency,
+            connection=await _read_connection(db, resolved),
         ),
         providers=providers,
         api_keys=await _list_api_keys(db, resolved.api_key),
@@ -360,6 +452,91 @@ async def test_llm(
 
 
 # ─── Model discovery ─────────────────────────────────────────────────────────
+
+@router.post("/llm/connect", response_model=ConnectResponse)
+async def connect_llm(
+    payload: ConnectRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ConnectResponse:
+    """
+    Probe an endpoint with the credentials typed into the dialog.
+
+    This is the "Connect" button: it validates the base URL and the key against
+    ``GET /models`` and hands back the model list so the dialog can fill its
+    dropdown. The model field stays empty until this succeeds — that is what
+    keeps a stale name from being saved by accident.
+
+    The *outcome* is persisted (never the key) so reopening the dialog restores
+    the same badge and model list. Without that, a user who had a working
+    configuration saw a blank panel every time and had no way to tell whether
+    anything was actually connected.
+
+    When the request omits the key, the one already stored is used, so a user who
+    only changes the base URL does not have to retype the secret.
+    """
+    await _load_overrides(db)
+    saved = llm_client.resolve_llm_config()
+
+    provider = (payload.llm_provider or saved.provider or "custom").strip().lower()
+    base_url = (payload.llm_base_url or saved.base_url or "").strip().rstrip("/")
+    api_key = (payload.llm_api_key or saved.api_key or "").strip()
+
+    def _fail(message: str) -> ConnectResponse:
+        return ConnectResponse(
+            ok=False, message=message, provider=provider, base_url=base_url
+        )
+
+    if not base_url:
+        return _fail(t("settings.connect_missing_base_url"))
+    if not base_url.startswith(("http://", "https://")):
+        return _fail(t("settings.invalid_base_url"))
+    if not api_key:
+        return _fail(t("settings.connect_missing_key"))
+
+    try:
+        models = await llm_client.fetch_models(base_url, api_key)
+    except (llm_client.LLMConfigurationError, llm_client.LLMRequestError) as exc:
+        logger.info("[settings] connect probe failed: %s", exc)
+        failure = _fail(t("settings.connect_failed", message=str(exc)[:300]))
+        await _store_connection(
+            db,
+            ConnectionState(
+                ok=False,
+                message=failure.message,
+                provider=provider,
+                base_url=base_url,
+                key_hint=_mask(api_key),
+                checked_at=datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        return failure
+
+    if models:
+        message = t("settings.connect_ok", count=len(models))
+    else:
+        message = t("settings.connect_no_models")
+    await _store_connection(
+        db,
+        ConnectionState(
+            ok=True,
+            message=message,
+            provider=provider,
+            base_url=base_url,
+            models=models,
+            key_hint=_mask(api_key),
+            checked_at=datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+    return ConnectResponse(
+        ok=True,
+        message=message,
+        provider=provider,
+        base_url=base_url,
+        models=models,
+        source="endpoint",
+    )
+
 
 @router.get("/llm/models", response_model=ModelsResponse)
 async def list_llm_models(

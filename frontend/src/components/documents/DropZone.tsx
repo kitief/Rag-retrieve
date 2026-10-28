@@ -1,15 +1,23 @@
 import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { motion } from 'framer-motion'
-import { UploadCloud, FileText, Presentation } from 'lucide-react'
+import { UploadCloud, FileText, Presentation, FileType2, FileCode2 } from 'lucide-react'
 import { useUploadDocument } from '@/api/documents'
 import { useToast } from '@/components/ui/use-toast'
 import { useT } from '@/i18n/useT'
 
 // Audio/video transcription and image OCR are shelved for now, so the uploader
-// only accepts PDF and PowerPoint. Re-enable the extra MIME entries below (and
-// the matching extensions in SUPPORTED_EXTS) once the backend parsing pipeline
-// is turned back on via ENABLE_AUDIO_VIDEO_UPLOADS.
+// accepts documents only. Re-enable the extra MIME entries below (and the
+// matching extensions in SUPPORTED_EXTS) once the backend parsing pipeline is
+// turned back on via ENABLE_AUDIO_VIDEO_UPLOADS.
+//
+// Markdown, Word and plain text are listed with several MIME spellings because
+// browsers disagree: Chrome reports .md as text/markdown, Windows often reports
+// nothing at all, and .docx has a long document MIME that some browsers report
+// with different casing. Legacy .doc is even worse -- Chrome sends
+// application/msword, Windows sometimes sends application/octet-stream, and
+// .csv is reported as text/csv by some browsers and application/vnd.ms-excel by
+// others. The extension rescue in onDrop covers the leftovers.
 const ACCEPTED_TYPES: Record<string, string[]> = {
   'application/pdf': ['.pdf'],
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
@@ -19,15 +27,40 @@ const ACCEPTED_TYPES: Record<string, string[]> = {
   'application/powerpoint': ['.ppt'],
   'application/x-powerpoint': ['.ppt'],
   'application/x-dos_ms_powerpoint': ['.ppt'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/msword': ['.doc', '.docx'],
+  'application/x-msword': ['.doc'],
+  'application/vnd.ms-word': ['.doc'],
+  'text/markdown': ['.md', '.markdown'],
+  'text/x-markdown': ['.md', '.markdown'],
+  'text/plain': ['.md', '.markdown', '.txt', '.text'],
+  'text/csv': ['.csv'],
+  'text/tab-separated-values': ['.tsv'],
+  'application/csv': ['.csv'],
+  'application/vnd.ms-excel': ['.csv'],
   // Shelved: video/mp4, video/x-matroska, video/quicktime, video/x-msvideo,
   // video/webm, audio/mpeg, audio/wav, audio/mp4, audio/ogg, audio/flac, audio/aac
 }
 
-const SUPPORTED_EXTS = ['.pdf', '.pptx', '.ppt']
+const SUPPORTED_EXTS = [
+  '.pdf',
+  '.pptx',
+  '.ppt',
+  '.docx',
+  '.doc',
+  '.md',
+  '.markdown',
+  '.txt',
+  '.text',
+  '.csv',
+  '.tsv',
+]
 
 const FILE_LABELS = [
   { icon: FileText, label: 'PDF', color: 'text-red-400' },
   { icon: Presentation, label: 'PPTX', color: 'text-orange-400' },
+  { icon: FileType2, label: 'DOC/DOCX', color: 'text-blue-400' },
+  { icon: FileCode2, label: 'MD/TXT/CSV', color: 'text-green-400' },
 ]
 
 interface DropZoneProps {

@@ -12,9 +12,7 @@ def say(msg: str) -> None:
 def main() -> int:
     say(f"frozen={getattr(sys, 'frozen', False)} meipass={getattr(sys, '_MEIPASS', '')}")
     target = sys.argv[sys.argv.index("--data-dir") + 1] if "--data-dir" in sys.argv else "diag-data"
-    os.environ["RAGVAULT_EMBEDDED"] = "1"
     os.environ["DATA_DIR"] = os.path.abspath(target)
-    os.environ["EMBEDDED"] = "true"
     os.environ["RAGVAULT_ENV_FILE"] = ""
     os.environ["HF_HOME"] = os.path.join(getattr(sys, "_MEIPASS", os.getcwd()), "fastembed")
     os.environ["HF_HUB_OFFLINE"] = "1"

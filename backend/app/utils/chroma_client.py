@@ -2,14 +2,10 @@
 ChromaDB client wrapper.
 Provides collection management, chunk storage, querying, and deletion.
 
-Two backends are supported (see ``CHROMA_MODE``):
-
-* ``server`` — the ChromaDB HTTP container from ``docker-compose.yml``. The
-  client probes ``/heartbeat`` and silently falls back to the embedded store if
-  the container is not reachable.
-* ``embedded`` — ``PersistentClient`` on ``chroma_persist_dir``, which is what
-  the desktop build uses. The heartbeat probe is skipped entirely: in a
-  single-process app it can only ever fail and would cost 1-2s of startup.
+Vectors live in an embedded ``PersistentClient`` under ``chroma_persist_dir``
+(``<data-dir>/chroma``). There is no Chroma server to probe: the whole product
+is one process, so a heartbeat check could only ever fail and would cost 1-2s
+of startup.
 """
 import logging
 from functools import lru_cache
@@ -23,44 +19,15 @@ logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=1)
 def get_chroma_client() -> chromadb.ClientAPI:
-    """
-    Return a ChromaDB client.
-
-    ``chroma_mode == "embedded"`` goes straight to ``PersistentClient``.
-    Otherwise the HTTP server is tried first and the embedded store is used as
-    a fallback when the container is unreachable.
-    """
+    """Return the embedded ChromaDB client for the active data directory."""
     from app.config import get_settings
 
     cfg = get_settings()
-
-    if cfg.chroma_mode == "embedded":
-        logger.info("Using embedded ChromaDB PersistentClient at %s", cfg.chroma_persist_dir)
-        return chromadb.PersistentClient(
-            path=cfg.chroma_persist_dir,
-            settings=Settings(anonymized_telemetry=False),
-        )
-
-    try:
-        logger.info("Connecting to ChromaDB HTTP server at %s:%s", cfg.chroma_host, cfg.chroma_port)
-        client = chromadb.HttpClient(
-            host=cfg.chroma_host,
-            port=cfg.chroma_port,
-            settings=Settings(anonymized_telemetry=False),
-        )
-        client.heartbeat()
-        logger.info("Successfully connected to ChromaDB HTTP server.")
-        return client
-    except Exception as exc:
-        logger.warning(
-            "Could not connect to ChromaDB HTTP server (%s). Using embedded PersistentClient at %s",
-            exc,
-            cfg.chroma_persist_dir,
-        )
-        return chromadb.PersistentClient(
-            path=cfg.chroma_persist_dir,
-            settings=Settings(anonymized_telemetry=False),
-        )
+    logger.info("Using embedded ChromaDB PersistentClient at %s", cfg.chroma_persist_dir)
+    return chromadb.PersistentClient(
+        path=cfg.chroma_persist_dir,
+        settings=Settings(anonymized_telemetry=False),
+    )
 
 
 def _collection_name(chat_id: str) -> str:
@@ -161,6 +128,12 @@ def query_collection(
 
     candidates: list[dict[str, Any]] = []
     for doc_text, meta, dist in zip(docs, metas, dists):
+        # A half-written record (process killed mid-upsert) comes back with
+        # ``None`` where its text or metadata should be. Such a chunk cannot be
+        # cited, so it is dropped here -- the alternative is a 500 deep inside
+        # retrieval, which reaches the user as a dropped connection.
+        if meta is None or doc_text is None or not doc_text.strip():
+            continue
         dist_val = float(dist)
         item = {
             "text": doc_text,
@@ -221,6 +194,57 @@ def delete_document_chunks(chat_id: str, document_id: str) -> None:
         )
     except Exception as exc:
         logger.warning("Failed to delete chunks for document %s: %s", document_id, exc)
+    # A chunk whose metadata never landed cannot be matched by the filter above,
+    # yet its id still starts with the document id. Sweep those by id.
+    purge_broken_chunks(chat_id, document_id=document_id)
+
+
+def purge_broken_chunks(chat_id: str, document_id: str | None = None) -> int:
+    """
+    Delete chunks that carry no text or no metadata, and return how many went.
+
+    An interrupted upsert (process killed mid-write) can leave a record with an
+    embedding but no document text, or text but no metadata. Such a record is
+    invisible to retrieval (we skip it) but still inflates ``count()``, and it is
+    unreachable by the ``document_id`` filter used for deletion because that
+    filter reads the very metadata that is missing. Removing it by id is the
+    only way to get the collection back to a truthful size.
+    """
+    collection = get_or_create_collection(chat_id)
+    try:
+        got = collection.get(include=["documents", "metadatas"])
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Could not inspect collection %s: %s", _collection_name(chat_id), exc)
+        return 0
+
+    ids = got.get("ids") or []
+    metas = got.get("metadatas") or []
+    docs = got.get("documents") or []
+
+    dead: list[str] = []
+    for chunk_id, meta, doc_text in zip(ids, metas, docs):
+        broken = meta is None or doc_text is None or not str(doc_text).strip()
+        if not broken:
+            continue
+        if document_id and not str(chunk_id).startswith(f"{document_id}_"):
+            continue
+        dead.append(chunk_id)
+
+    if not dead:
+        return 0
+
+    try:
+        collection.delete(ids=dead)
+        logger.warning(
+            "Purged %d broken chunk(s) from collection %s%s",
+            len(dead),
+            _collection_name(chat_id),
+            f" (document_id={document_id})" if document_id else "",
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Failed to purge broken chunks from %s: %s", _collection_name(chat_id), exc)
+        return 0
+    return len(dead)
 
 
 def get_all_chunks(chat_id: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -240,6 +264,11 @@ def get_all_chunks(chat_id: str, limit: int = 20) -> list[dict[str, Any]]:
     metas = results.get("metadatas") or []
 
     for doc_text, meta in zip(docs, metas):
+        # A chunk without metadata or text cannot be cited; skip it rather than
+        # letting ``meta.get`` raise on a None returned by Chroma.
+        meta = meta or {}
+        if doc_text is None or not doc_text.strip():
+            continue
         hits.append(
             {
                 "text": doc_text,

@@ -10,6 +10,9 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+# pytest's --basetemp scratch dirs (60 MB of generated PDFs/DOCX fixtures otherwise)
+pytest-of-*/
+pytest-*/
 
 # Node / Frontend
 node_modules/
@@ -25,7 +28,6 @@ frontend/.vite/
 # Uploads / data
 uploads/
 chroma_data/
-postgres_data/
 ollama_models/
 
 # IDE
@@ -38,9 +40,6 @@ ollama_models/
 # Logs
 *.log
 logs/
-
-# Docker
-*.env.docker
 
 # Local GGUF weights (root-level only — `backend/app/models/` holds ORM models)
 /models/
