@@ -59,7 +59,7 @@ PakePlus / Pake 这类工具的本质是：**Tauri 壳 + 指向一个远程 URL*
 | 向量库 | `chromadb.HttpClient(host="chromadb")` (`backend/app/utils/chroma_client.py:28`) | 换 `PersistentClient` |
 | Embedding | fastembed `BAAI/bge-small-en-v1.5`，从 HF 下载到 `/hf_cache` (`backend/app/utils/embedder.py:28`) | **必须预置进安装包**，否则首启要联网 |
 | 前端托管 | nginx 容器，`/api` 反代到 `backend:8000` | 改由 FastAPI `StaticFiles` 托管 |
-| 进程入口 | `docker-entrypoint.sh`：`alembic upgrade head` + `uvicorn --host 0.0.0.0 --port 8000` | 换成 `--host 127.0.0.1 --port 0` |
+| 进程入口 | `docker-entrypoint.sh`：`alembic upgrade head` + `uvicorn --host 0.0.0.0 --port 8000` | 换成 `--host 127.0.0.1 --port <稳定端口>`（见下方「端口为什么不能随机」） |
 | 跨域 | `main.py:106-114` 白名单只含 `localhost:3000/80`、`frontend` | 同源方案下不用改；`tauri://` 方案下必须加 |
 | SSE 流式 | `frontend/src/api/messages.ts:66` 用 `fetch` + `body.getReader()` 手解析 | WebView2 没问题；WKWebView 要降级 |
 | 文件下载 | `frontend/src/api/notes.ts:38-43` 用 `createObjectURL` + `<a download>` | **Tauri 里默认会被吞掉**，必须接管 |
@@ -103,7 +103,7 @@ PakePlus / Pake 这类工具的本质是：**Tauri 壳 + 指向一个远程 URL*
 │  RagVault.exe  (Tauri v2 主进程, Rust)                    │
 │                                                          │
 │  1. 解析数据目录  %APPDATA%\com.ragvault.desktop\data\   │
-│  2. spawn sidecar: ragvault-backend.exe --port 0          │
+│  2. spawn sidecar: --port <记住的端口或 47823..>          │
 │  3. 读 sidecar stdout，等 "RAGVAULT_READY port=54321"     │
 │  4. 轮询 GET /health 直到 200                             │
 │  5. WebviewWindow → http://127.0.0.1:54321/               │
@@ -113,7 +113,7 @@ PakePlus / Pake 这类工具的本质是：**Tauri 壳 + 指向一个远程 URL*
 ┌───────────────────────▼──────────────────────────────────┐
 │  ragvault-backend.exe  (PyInstaller onedir, 单进程)        │
 │                                                          │
-│  FastAPI (uvicorn, 127.0.0.1:随机端口)                    │
+│  FastAPI (uvicorn, 127.0.0.1:稳定端口)                    │
 │   ├─ /api/*          业务路由（现有 routers 原封不动）      │
 │   ├─ /               StaticFiles → frontend/dist (SPA)   │
 │   └─ /health         就绪探针                             │
@@ -210,7 +210,7 @@ chroma_mode: str = "server"   # "server" | "embedded"
 
 ✅ 正确做法：
 
-1. Rust 传 `--port 0`，让 uvicorn 自己挑端口。
+1. Rust 传一个**跨启动稳定**的端口（见下方「端口为什么不能随机」），uvicorn 绑定它。
 2. 后端在 uvicorn 启动完成后**向 stdout 打印一行**约定的就绪信号：
    ```
    RAGVAULT_READY port=54321
@@ -719,7 +719,7 @@ Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wai
 | 模型离线加载失败（路径只读、lock 文件） | 中 | 首启卡死 | 首启拷贝到 `%APPDATA%`；`assert` 存在性而非静默联网 |
 | SQLite 写锁冲突（解析大 PDF 时前端报 500） | 中 | 体验差 | 开 WAL + busy_timeout；解析任务串行化 |
 | sidecar 进程泄漏（关窗后残留） | 中 | 撞端口、下次启不来 | `Option::take()` 只杀一次 + pid 文件兜底清理 + 启动时探活清孤儿 |
-| 端口被占用 / 被抢 | 低 | 起不来 | `--port 0` 让系统分配 + 读 stdout 握手，不做 bind-then-close |
+| 端口被占用 / 被抢 | 低 | 起不来，或 origin 变化导致本地设置失效 | 先 `bind` 探测，被占则依次尝试 47823–47826，全占才退回 `--port 0`；读 stdout 握手，不做 bind-then-close |
 | WebView2 未安装（Win10 1803 以下） | 中 | 白屏 | 安装包内置 ever-green bootstrapper |
 | 杀软误报（未签名 exe） | 高 | 用户不敢装 | 代码签名；准备「如何加白名单」的说明文档 |
 | 本地服务被恶意网页调用（localhost CSRF） | 中 | 数据泄露/删除 | 本地 token 校验 + `Origin` 检查 |
@@ -728,6 +728,23 @@ Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wai
 | 中文/空格路径导致 sidecar 找不到资源 | 中 | 启动失败 | 所有路径用 `Path` 拼接，传参不走 shell 字符串；构建时在中文路径下测一次 |
 
 ---
+
+### 端口为什么不能随机
+
+早期实现让 Rust 传 `--port 0`，由 uvicorn 向系统要一个空闲端口。这样启动最省事，但它有一个当时没意识到的副作用：**端口是 origin 的一部分**，而 WebView2 按 origin 分区 `localStorage`、IndexedDB 和 cookie。
+
+于是 `http://127.0.0.1:56052/` 和 `http://127.0.0.1:62282/` 是两个完全独立的存储区。每次启动换端口，就等于给应用换了一个空的存储区——用户切到浅色模式、关掉应用、再打开，又变回深色；语言、登录态、引导标记、上次打开的会话也一并丢失。开发时看不出来，因为 Vite 固定在 `localhost:3000`，origin 一直没变。
+
+现在的做法（`src-tauri/src/main.rs`）：
+
+1. 上次成功的端口写在 `<data>/app-port.txt`，下次启动优先复用，origin 因此稳定。
+2. 复用前先 `bind` 探测；被占用则依次尝试 `FALLBACK_PORTS = [47823, 47824, 47825, 47826]`。
+3. 后端启动失败（探测与真正绑定之间被抢）会**换下一个候选重试**，而不是直接放弃。
+4. 全部失败才退回 `--port 0`，此时功能正常，但本地设置会丢失——这是最后兜底，不是默认路径。
+
+只有真正绑定成功的端口才会写回 `app-port.txt`。
+
+另外 `frontend/public/theme-boot.js` 会在 bundle 加载前重放上次的主题，避免浅色用户每次启动先闪一下深色。
 
 ## 9. 明确不做的事（范围控制）
 

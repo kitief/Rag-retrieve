@@ -149,4 +149,30 @@ export function applyTheme(mode: ThemeMode = 'dark') {
   for (const [key, value] of Object.entries(cssVariables)) {
     root.style.setProperty(key, value)
   }
+
+  cacheThemeForFirstPaint(mode, cssVariables)
+}
+
+/** Storage keys read by the inline boot script in `index.html`. */
+const BOOT_MODE_KEY = 'ragvault-theme-mode'
+const BOOT_VARS_KEY = 'ragvault-theme-vars'
+
+/**
+ * Remember the theme so the *next* launch can paint it before the bundle loads.
+ *
+ * Without this the window always flashes the dark defaults from `index.css` on
+ * startup: the HTML paints long before React runs `initTheme()`. Saving the
+ * computed variables (rather than a copy of the palette) keeps `themes` as the
+ * single source of truth — the boot script just replays what this function
+ * produced last time.
+ */
+function cacheThemeForFirstPaint(mode: ThemeMode, cssVariables: Record<string, string>) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(BOOT_MODE_KEY, mode)
+    window.localStorage.setItem(BOOT_VARS_KEY, JSON.stringify(cssVariables))
+  } catch {
+    // Private mode, quota, or storage disabled: the flash returns, nothing else
+    // breaks, so this is not worth surfacing.
+  }
 }

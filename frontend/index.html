@@ -8,6 +8,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!--
+      Paint the remembered theme before the bundle loads.
+
+      Without this the window always flashed dark on startup: the stylesheet
+      ships dark defaults and React only applies the saved theme after it has
+      hydrated. `applyTheme()` caches the mode and the variables it computed
+      into localStorage; theme-boot.js replays them synchronously.
+
+      A classic (non-module) script in `<head>` runs before the deferred module
+      bundle, which is exactly the ordering needed here.
+    -->
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

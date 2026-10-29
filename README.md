@@ -193,6 +193,30 @@ OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）�
 
 ---
 
+## 🎨 主题（深色 / 浅色）
+
+侧边栏底部有一个切换按钮，选择会存进 `localStorage`（`ragvault-theme-preference`），
+下次打开仍是上次的样子。
+
+### 为什么桌面版曾经会「复原」
+
+主题确实存下来了，问题出在**存到了哪个 origin**：WebView2 按 origin 分区
+`localStorage`，而桌面壳早期用 `--port 0` 让系统每次分配新端口，于是
+`http://127.0.0.1:56052/` 和 `http://127.0.0.1:62282/` 是两个互不相干的存储区。
+换个端口就等于换了个空存储区——主题、语言、登录态、引导标记全部重来。
+
+现在端口是稳定的：上次成功的端口记在 `<data>/app-port.txt`，下次优先复用；
+被占用时依次尝试 `47823–47826`，全占才退回随机端口。细节见
+[`docs/desktop-packaging.md`](docs/desktop-packaging.md) 的「端口为什么不能随机」。
+
+### 首帧不再闪一下深色
+
+`frontend/public/theme-boot.js` 是一个在 `<head>` 里同步加载的普通脚本，
+它会在 bundle 之前把上次的主题重放到 `<html>` 上。否则浅色用户每次启动都会先看到
+深色默认值，等 React 水合后才跳成浅色。
+
+---
+
 ## 📁 支持的文件类型
 
 | 类型 | 扩展名 | 状态 | 处理方式 |
@@ -548,6 +572,8 @@ Remove-Item -Recurse "$env:APPDATA\com.ragvault.desktop"
 ```
 RagVault/
 ├── frontend/               # React + Vite + TypeScript（构建产物被后端托管）
+│   ├── public/
+│   │   └── theme-boot.js   # 首帧主题重放（在 bundle 之前同步执行）
 │   ├── src/
 │   │   ├── api/            # TanStack Query hooks
 │   │   ├── components/     # UI 组件（shadcn/ui + 自定义）

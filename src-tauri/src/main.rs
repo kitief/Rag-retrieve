@@ -3,7 +3,7 @@
 //! Responsibilities, in order:
 //!   1. pick a per-user data directory,
 //!   2. generate a one-shot local token,
-//!   3. spawn the frozen Python backend as a child process on an ephemeral port,
+//!   3. spawn the frozen Python backend as a child process on a stable port,
 //!   4. wait for its `RAGVAULT_READY port=<n>` handshake (and double-check /health),
 //!   5. open a webview pointed at `http://127.0.0.1:<port>/`,
 //!   6. make sure the child dies when the window closes.
@@ -11,6 +11,11 @@
 //! The backend serves the built SPA itself, so the webview loads the app and the
 //! API from the same origin. That keeps `baseURL: '/api'` working unchanged and
 //! removes CORS from the picture entirely.
+//!
+//! The port is chosen to be **stable across launches** rather than ephemeral:
+//! it is part of the origin, and WebView2 keys `localStorage` by origin, so an
+//! ever-changing port means the app starts with empty storage every time and
+//! the user's theme, language and session appear to reset themselves.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -27,6 +32,24 @@ const READY_PREFIX: &str = "RAGVAULT_READY port=";
 const WINDOW_LABEL: &str = "main";
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(90);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Remembers the loopback port this app last bound successfully.
+///
+/// The port is not just plumbing: it is part of the **origin** the SPA runs
+/// under, and WebView2 partitions `localStorage` (and IndexedDB, and cookies)
+/// by origin. Serving the UI from `http://127.0.0.1:<ephemeral>/` therefore
+/// hands the app a brand-new, empty storage area on every launch — the theme,
+/// the language, the login token and the onboarding flag all silently reset.
+/// Persisting the port keeps the origin stable across restarts, which is what
+/// makes those settings actually stick.
+const PORT_FILE: &str = "app-port.txt";
+
+/// Deterministic ports tried in order when there is no usable remembered port.
+///
+/// Deliberately high and uncommon: a collision with another application means
+/// the origin changes and stored settings are orphaned again, so we try a few
+/// before giving up and letting the OS choose.
+const FALLBACK_PORTS: [u16; 4] = [47823, 47824, 47825, 47826];
 
 /// Holds the backend child so it can be killed exactly once, on either the
 /// window close or the process exit path (whichever happens first).
@@ -213,6 +236,70 @@ fn log_path(app: &tauri::AppHandle) -> PathBuf {
     data_dir(app).join("backend.log")
 }
 
+/// The port file lives beside the database so it travels with the data dir.
+fn port_path(app: &tauri::AppHandle) -> PathBuf {
+    data_dir(app).join(PORT_FILE)
+}
+
+/// Read the port this install used last time, if it still looks usable.
+fn remembered_port(app: &tauri::AppHandle) -> Option<u16> {
+    let raw = std::fs::read_to_string(port_path(app)).ok()?;
+    let port: u16 = raw.trim().parse().ok()?;
+    // Port 0 means "the OS chose for us" — that is exactly the case we are
+    // trying to leave behind, so it is not worth remembering.
+    if port == 0 {
+        return None;
+    }
+    Some(port)
+}
+
+fn remember_port(app: &tauri::AppHandle, port: u16) {
+    if port == 0 {
+        return;
+    }
+    let path = port_path(app);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(err) = std::fs::write(&path, format!("{port}\n")) {
+        // Not fatal: the app still runs, it just falls back to an ephemeral
+        // port and loses its stored settings on the next launch.
+        eprintln!("[shell] warning: could not remember port {port}: {err}");
+    }
+}
+
+/// Candidate ports in the order they should be tried.
+///
+/// The remembered port comes first so the origin stays stable; the preferred
+/// range follows, and `0` (let the OS choose) is always the last resort.
+fn port_candidates(remembered: Option<u16>) -> Vec<u16> {
+    let mut candidates: Vec<u16> = Vec::new();
+    if let Some(port) = remembered {
+        if port != 0 {
+            candidates.push(port);
+        }
+    }
+    for port in FALLBACK_PORTS {
+        if !candidates.contains(&port) {
+            candidates.push(port);
+        }
+    }
+    candidates.push(0);
+    candidates
+}
+
+/// True when nothing is listening on `port` (so the backend can bind it).
+fn port_is_free(port: u16) -> bool {
+    if port == 0 {
+        return true;
+    }
+    // Binding is the closest we can get to asking the kernel "is this free?".
+    // A failed bind means someone else owns it, which is all we need to know.
+    // The check is racy in principle; `launch_with_retry` handles the case
+    // where another process grabs the port in the microseconds in between.
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
 /// Pick a directory WebView2 is actually allowed to write into.
 ///
 /// The SPA saves PDFs through a `blob:` URL plus `<a download>`, which WebView2
@@ -287,8 +374,7 @@ fn unique_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{stem}-{}{ext}", std::process::id()))
 }
 
-fn launch_backend(app: &tauri::AppHandle, token: &str) -> Result<Launch, String> {
-    let exe = backend_exe(app)?;
+fn launch_backend(app: &tauri::AppHandle, token: &str, port: u16) -> Result<Launch, String> {    let exe = backend_exe(app)?;
     let workdir = exe
         .parent()
         .ok_or_else(|| "backend executable has no parent directory".to_string())?
@@ -308,12 +394,15 @@ fn launch_backend(app: &tauri::AppHandle, token: &str) -> Result<Launch, String>
     let mut command = Command::new(&exe);
     command
         .current_dir(&workdir)
-        // `--port 0` lets the OS pick a free port; the backend reports it back
-        // on stdout. Asking the OS first and then binding would race.
+        // The port decides the origin the SPA runs under, and therefore which
+        // `localStorage` bucket the browser hands it. `port_candidates` puts
+        // the port this install used last time first so the theme, language and
+        // login survive a restart; `0` is only reached when every candidate was
+        // taken between the check and the bind.
         .arg("--data-dir")
         .arg(&data)
         .arg("--port")
-        .arg("0")
+        .arg(port.to_string())
         .arg("--host")
         .arg("127.0.0.1")
         .env("RAGVAULT_LOCAL_TOKEN", token)
@@ -451,6 +540,61 @@ fn launch_backend(app: &tauri::AppHandle, token: &str) -> Result<Launch, String>
 /// the pump thread, which looks identical to the child exiting.
 fn decode_lossy(raw: &[u8]) -> String {
     String::from_utf8_lossy(raw).to_string()
+}
+
+/// Start the backend, falling back through the port candidates on failure.
+///
+/// A port that looked free a moment ago can be taken by the time the backend
+/// tries to bind it, in which case the child exits and never prints its
+/// handshake. Retrying the next candidate is much friendlier than failing to
+/// start at all, and it also covers a stale port file left by a crashed run.
+fn launch_with_retry(
+    app: &tauri::AppHandle,
+    token: &str,
+) -> Result<(Launch, u16), String> {
+    let candidates = port_candidates(remembered_port(app));
+    let mut last_error = String::new();
+
+    for (index, candidate) in candidates.iter().copied().enumerate() {
+        if candidate != 0 && !port_is_free(candidate) {
+            eprintln!("[shell] port {candidate} is busy; skipping it");
+            continue;
+        }
+
+        let mut launch = match launch_backend(app, token, candidate) {
+            Ok(launch) => launch,
+            Err(err) => {
+                // Spawning failed outright (missing exe, permissions). Trying
+                // another port cannot help.
+                return Err(err);
+            }
+        };
+
+        match wait_for_ready(&mut launch.child, &launch.lines) {
+            Ok(port) => {
+                if candidate == 0 {
+                    eprintln!("[shell] the OS assigned port {port}");
+                } else if port != candidate {
+                    eprintln!("[shell] backend bound {port} instead of the requested {candidate}");
+                }
+                return Ok((launch, port));
+            }
+            Err(err) => {
+                let _ = launch.child.kill();
+                let _ = launch.child.wait();
+                last_error = err;
+                if index + 1 < candidates.len() {
+                    eprintln!("[shell] backend did not start on port {candidate}; trying the next one");
+                }
+            }
+        }
+    }
+
+    Err(if last_error.is_empty() {
+        "Could not start the backend on any port.".to_string()
+    } else {
+        last_error
+    })
 }
 
 fn wait_for_ready(child: &mut Child, lines: &Receiver<String>) -> Result<u16, String> {
@@ -711,6 +855,75 @@ fn sanitise_filename(name: &str) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remembered_port_wins_when_it_is_free() {
+        let candidates = port_candidates(Some(47823));
+        assert_eq!(candidates.first(), Some(&47823));
+    }
+
+    #[test]
+    fn remembered_port_comes_before_the_fallback_range() {
+        let candidates = port_candidates(Some(51000));
+        assert_eq!(candidates[0], 51000);
+        assert_eq!(candidates[1..5], FALLBACK_PORTS);
+    }
+
+    #[test]
+    fn a_remembered_port_is_not_duplicated() {
+        // A previous run may have landed on a fallback port; the list must not
+        // then contain it twice.
+        let candidates = port_candidates(Some(FALLBACK_PORTS[0]));
+        let occurrences = candidates.iter().filter(|p| **p == FALLBACK_PORTS[0]).count();
+        assert_eq!(occurrences, 1);
+    }
+
+    #[test]
+    fn port_zero_is_never_remembered_as_a_choice() {
+        // 0 means "the OS picked", which is exactly what we are trying to
+        // escape; it must not be treated as a stable origin.
+        let candidates = port_candidates(Some(0));
+        assert_eq!(candidates[..FALLBACK_PORTS.len()], FALLBACK_PORTS);
+        assert_eq!(candidates.last(), Some(&0));
+    }
+
+    #[test]
+    fn the_os_fallback_is_always_last() {
+        let candidates = port_candidates(Some(47823));
+        assert_eq!(candidates.last(), Some(&0));
+    }
+
+    #[test]
+    fn every_candidate_except_the_os_choice_is_distinct() {
+        let candidates = port_candidates(Some(47824));
+        let mut seen: Vec<u16> = candidates.iter().copied().filter(|p| *p != 0).collect();
+        let before = seen.len();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), before, "candidates contained a duplicate: {candidates:?}");
+    }
+
+    #[test]
+    fn a_free_remembered_port_is_reused() {
+        // The whole point of the fix: same port twice in a row means the same
+        // origin, so `localStorage` (theme, language, session) survives.
+        let first = port_candidates(None);
+        let chosen = *first.first().unwrap();
+        let second = port_candidates(Some(chosen));
+        assert_eq!(second.first(), Some(&chosen));
+    }
+
+    #[test]
+    fn port_zero_always_counts_as_free() {
+        // Binding port 0 asks the OS for a port; it can never "fail" because
+        // someone else owns it.
+        assert!(port_is_free(0));
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -729,19 +942,14 @@ fn main() {
             let token = uuid::Uuid::new_v4().simple().to_string();
             eprintln!("[shell] data dir: {}", data_dir(&handle).display());
 
-            let mut launch = match launch_backend(&handle, &token) {
-                Ok(launch) => launch,
+            let (mut launch, port) = match launch_with_retry(&handle, &token) {
+                Ok(pair) => pair,
                 Err(err) => return Err(err.into()),
             };
 
-            let port = match wait_for_ready(&mut launch.child, &launch.lines) {
-                Ok(port) => port,
-                Err(err) => {
-                    let _ = launch.child.kill();
-                    let _ = launch.child.wait();
-                    return Err(err.into());
-                }
-            };
+            // Persist only what actually worked, so the next launch can reuse
+            // the same origin and find the settings this session wrote.
+            remember_port(&handle, port);
 
             eprintln!("[shell] backend ready on port {port}");
             let state = BackendProcess {

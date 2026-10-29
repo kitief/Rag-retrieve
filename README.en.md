@@ -204,6 +204,33 @@ at the same time.
 
 ---
 
+## 🎨 Theme (dark / light)
+
+The toggle sits in the sidebar footer and the choice is stored in `localStorage`
+(`ragvault-theme-preference`), so the next launch looks like the last one.
+
+### Why the desktop build used to forget it
+
+The theme *was* being saved. The problem was **which origin saved it**: WebView2
+partitions `localStorage` by origin, and the shell used to pass `--port 0` so the
+OS handed out a fresh port every launch. That makes
+`http://127.0.0.1:56052/` and `http://127.0.0.1:62282/` two unrelated storage
+buckets — a new port is a new, empty profile, taking the theme, the language, the
+login token and the onboarding flag with it.
+
+The port is now stable: the last port that actually bound is remembered in
+`<data>/app-port.txt` and reused, falling back through `47823–47826` and only
+then to a random one. See "Why the port cannot be random" in
+[`docs/desktop-packaging.md`](docs/desktop-packaging.md).
+
+### No more dark flash on startup
+
+`frontend/public/theme-boot.js` is a plain script in `<head>` that replays the
+remembered theme onto `<html>` before the bundle runs. Without it a light-mode
+user saw the dark defaults on every launch until React hydrated.
+
+---
+
 ## 📁 Supported File Types
 
 | Type | Extensions | Status | Processing |
@@ -589,6 +616,8 @@ The API is documented at `http://localhost:8000/docs` (Swagger UI) and `http://l
 ```
 RagVault/
 ├── frontend/               # React + Vite + TypeScript (build output served by the backend)
+│   ├── public/
+│   │   └── theme-boot.js   # Replays the theme before the bundle runs
 │   ├── src/
 │   │   ├── api/            # TanStack Query hooks
 │   │   ├── components/     # UI components (shadcn/ui + custom)
