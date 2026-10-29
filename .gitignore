@@ -56,3 +56,6 @@ build/desktop/
 frontend/.esbuild-tmp/
 data-gym-cache/
 pip-unpack-*/
+
+# Local scratch: probe scripts and downloaded wheels
+_setup/
