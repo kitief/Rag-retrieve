@@ -699,6 +699,7 @@ Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wai
 | 冻结产物自测 | `--port 8791` 起 exe 后同样跑通上述五项（不经安装步骤） |
 | 静默卸载 | exit 0，`%LOCALAPPDATA%\RagVault` 完全移除 |
 | 安装包体积 | 136.83 MiB → **169.85 MiB**（+33 MiB，主要是 cv2 71 MB 与 rapidocr 的 ONNX 模型 16 MB） |
+| 安装后磁盘占用 | **413.0 MiB / 1939 个文件**（`cv2.pyd` 71 MB、`model_optimized.onnx` 63 MB、`libopenblas64__*.dll` 36 MB、`ragvault-backend.exe` 27 MB、`mupdfcpp64.dll` 20 MB） |
 | 代码签名 | **未做**（无 Authenticode 证书）。首次运行 SmartScreen 会拦，解决方式见下 |
 
 > 上表的「安装后 OCR」一项是这次打包最关键的验收点：PyInstaller 只会收集它看得见的

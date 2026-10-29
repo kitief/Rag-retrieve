@@ -20,7 +20,7 @@ All **answer generation** is delegated to a cloud LLM over an OpenAI-compatible 
 |------|---------|-------|
 | OS | Windows 10 1809+ / Windows 11 | Needs WebView2 (built into Win11; usually present on Win10 via Edge) |
 | RAM | 8GB minimum | Backend process + WebView2 + embedding model |
-| Disk | 1.5GB free | ~170 MiB installer, ~610 MB installed |
+| Disk | 1.5GB free | ~170 MiB installer, ~413 MiB installed |
 | LLM API key | — | DeepSeek: https://platform.deepseek.com/api_keys |
 
 ### 1. Install

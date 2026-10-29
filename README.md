@@ -20,7 +20,7 @@
 |------|---------|-------|
 | 操作系统 | Windows 10 1809+ / Windows 11 | 需要 WebView2（Win11 自带，Win10 一般已随 Edge 安装） |
 | 内存 | 最低 8GB | 后端进程 + WebView2 + 嵌入模型 |
-| 磁盘 | 1.5GB 可用空间 | 安装包约 170 MiB，安装后约 610 MB |
+| 磁盘 | 1.5GB 可用空间 | 安装包约 170 MiB，安装后约 413 MiB |
 | LLM API Key | — | DeepSeek：https://platform.deepseek.com/api_keys |
 
 ### 1. 安装
