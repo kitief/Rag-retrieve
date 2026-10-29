@@ -71,6 +71,28 @@ for package in ("chromadb", "onnxruntime", "fastembed", "tokenizers", "huggingfa
 _merge("fitz")
 _merge("pymupdf")
 
+# --- OCR stack ----------------------------------------------------------------
+# RapidOCR carries its three ONNX models (det / rec / cls, ~16 MB total) inside
+# the package, and reads them from disk at runtime — if they are missing the
+# frozen app still imports fine and then fails on the first scanned page, which
+# is exactly the kind of silent breakage the desktop build is meant to avoid.
+# PyInstaller 6.22 ships no hook for it (nor for shapely/pyclipper), so pull the
+# data files by hand.
+for _ocr_package in ("rapidocr_onnxruntime", "shapely", "pyclipper"):
+    _merge(_ocr_package)
+
+# shapely drags in its own 1.6 MB test-suite; nothing here runs it.
+datas = [entry for entry in datas if not entry[1].replace("/", "\\").startswith("shapely\\tests")]
+
+# cv2 needs both its data files and the "cv2.cv2" extension module, which
+# cv2/__init__.py reaches through importlib and static analysis therefore misses.
+# collect_all() also grabs a 28 MB ffmpeg DLL used only for video I/O; this app
+# never decodes video, so it is dropped to keep the installer lean.
+_cv2_datas, _cv2_binaries, _cv2_hiddenimports = collect_all("cv2")
+datas.extend(entry for entry in _cv2_datas if "opencv_videoio_ffmpeg" not in entry[0])
+binaries.extend(entry for entry in _cv2_binaries if "opencv_videoio_ffmpeg" not in entry[0])
+hiddenimports.extend(_cv2_hiddenimports)
+
 # Async SQLite driver, loaded by SQLAlchemy through an URL string.
 hiddenimports += collect_submodules("aiosqlite")
 hiddenimports += collect_submodules("sqlalchemy.dialects.sqlite")
@@ -126,6 +148,10 @@ hiddenimports += [
     # imports, but naming it here keeps the legacy Word reader in the bundle
     # even if that call site is ever moved behind a dynamic import.
     "app.utils.doc_legacy",
+    # PDF pipeline: also imported normally, but it is the one module whose
+    # absence would only show up as "scanned PDFs silently produce nothing",
+    # so keep it pinned in the bundle explicitly.
+    "app.utils.pdf_pipeline",
 ]
 
 block_cipher = None
@@ -160,6 +186,48 @@ a = Analysis(
     noarchive=False,
 )
 
+
+# --- Dead weight ---------------------------------------------------------------
+# Three chunks of the collected bundle are never touched by this app, and the
+# installer is a download, so they are worth removing:
+#
+# * ``opencv_videoio_ffmpeg*.dll`` (27 MB) — video *decoding* for cv2.VideoCapture.
+#   This app decodes PDF page images with PyMuPDF and never opens a video file.
+#   cv2 imports and runs Canny/adaptiveThreshold/minAreaRect without it (checked).
+# * ``pymupdf/mupdf-devel`` (5 MB) — C headers and import libraries, only useful
+#   to someone compiling against MuPDF.
+# * ``cv2/data/haarcascade_*.xml`` (9 MB) — pre-trained face/person detectors.
+#   Nothing in the OCR path calls CascadeClassifier.
+_DROP_BINARY_NAMES = {"opencv_videoio_ffmpeg4110_64.dll"}
+
+
+def _is_devel(path: str) -> bool:
+    return "mupdf-devel" in path.replace("\\", "/")
+
+
+a.binaries = [
+    entry
+    for entry in a.binaries
+    if Path(entry[0]).name.lower() not in _DROP_BINARY_NAMES
+    and not _is_devel(entry[0])
+    and not _is_devel(entry[1])
+]
+
+a.datas = [
+    entry
+    for entry in a.datas
+    if not _is_devel(entry[0])
+    and not _is_devel(entry[1])
+    # NB: after Analysis(), data entries are (dest, src, typecode) — the bundle
+    # path is entry[0], not entry[1]. Filtering on the source path silently
+    # matches nothing.
+    and not (
+        entry[0].replace("\\", "/").startswith("cv2/data")
+        and Path(entry[0]).name.lower().startswith("haarcascade")
+    )
+]
+
+print(f"[spec] trimmed bundle: {len(a.binaries)} binaries, {len(a.datas)} data files")
 
 # --- VC++ runtime sanity -------------------------------------------------------
 # PyInstaller picks up ``msvcp140.dll`` / ``vcruntime140*.dll`` from whichever
