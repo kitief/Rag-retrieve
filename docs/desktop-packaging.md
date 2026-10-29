@@ -102,7 +102,7 @@ PakePlus / Pake 这类工具的本质是：**Tauri 壳 + 指向一个远程 URL*
 ┌──────────────────────────────────────────────────────────┐
 │  RagVault.exe  (Tauri v2 主进程, Rust)                    │
 │                                                          │
-│  1. 解析数据目录  %APPDATA%\RagVault\                     │
+│  1. 解析数据目录  %APPDATA%\com.ragvault.desktop\data\   │
 │  2. spawn sidecar: ragvault-backend.exe --port 0          │
 │  3. 读 sidecar stdout，等 "RAGVAULT_READY port=54321"     │
 │  4. 轮询 GET /health 直到 200                             │
@@ -118,9 +118,9 @@ PakePlus / Pake 这类工具的本质是：**Tauri 壳 + 指向一个远程 URL*
 │   ├─ /               StaticFiles → frontend/dist (SPA)   │
 │   └─ /health         就绪探针                             │
 │                                                          │
-│  SQLite      %APPDATA%\RagVault\data\ragvault.db  (WAL)   │
-│  Chroma      %APPDATA%\RagVault\data\chroma\  (Embedded)  │
-│  上传临时区   %APPDATA%\RagVault\data\uploads\temp\        │
+│  SQLite      %APPDATA%\com.ragvault.desktop\data\ragvault.db │
+│  Chroma      %APPDATA%\com.ragvault.desktop\data\chroma\    │
+│  上传临时区   %APPDATA%\com.ragvault.desktop\data\uploads\temp\ │
 │  模型缓存     <安装目录>\resources\fastembed\  (只读预置)   │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -202,7 +202,7 @@ chroma_mode: str = "server"   # "server" | "embedded"
    ```
 3. 启动时 `assert` 模型目录存在，缺失就弹窗提示「安装包损坏」而不是静默联网。
 
-> 注意资源目录是**只读**的（macOS 的 `.app/Contents/Resources`、Windows 的安装目录）。如果 fastembed 尝试往 cache 目录写东西会失败——把所有「可写」的东西（`HF_HOME` 的 lock、临时文件）指到 `%APPDATA%`，只把模型权重留在资源目录。稳妥做法是首启时把模型**复制**到 `%APPDATA%\RagVault\models\`（130 MB 一次性拷贝，首次启动多 5 秒，换来读写一致）。
+> 注意资源目录是**只读**的（macOS 的 `.app/Contents/Resources`、Windows 的安装目录）。如果 fastembed 尝试往 cache 目录写东西会失败——把所有「可写」的东西（`HF_HOME` 的 lock、临时文件）指到 `%APPDATA%`，只把模型权重留在资源目录。稳妥做法是首启时把模型**复制**到 `%APPDATA%\com.ragvault.desktop\data\models\`（130 MB 一次性拷贝，首次启动多 5 秒，换来读写一致）。
 
 ### 5.4 端口协商：让它自己报，不要自己猜
 
@@ -303,7 +303,7 @@ fn main() {
 
 1. **`Option::take()` 保证只杀一次**——`ExitRequested` 可能触发多次，重复 kill 会 panic 或误杀复用 pid 的进程。
 2. 监听 `RunEvent::Exit` 之外还要覆盖**窗口关闭**（用户点 X，窗口关但进程还在）。`ExitRequested` 在最后一个窗口关闭时触发；如果配置了 `tauri-plugin-window-state` 之类的插件，要确认它没拦截退出。
-3. 加**兜底清理**：后端启动时把自己的 pid 写到 `%APPDATA%\RagVault\backend.pid`；下次启动时如果 pid 文件存在且 `/health` 探活成功，说明是上次的孤儿，直接 `taskkill /PID` 清掉再启动。
+3. 加**兜底清理**：后端启动时把自己的 pid 写到 `%APPDATA%\com.ragvault.desktop\data\backend.pid`；下次启动时如果 pid 文件存在且 `/health` 探活成功，说明是上次的孤儿，直接 `taskkill /PID` 清掉再启动。
 
 ### 5.9 二进制命名约定（必踩）
 
@@ -328,9 +328,9 @@ src-tauri/binaries/ragvault-backend-aarch64-apple-darwin
 
 | 用途 | Windows | macOS | 说明 |
 | --- | --- | --- | --- |
-| 关系库 + 向量库 + 上传 | `%APPDATA%\RagVault\data\` | `~/Library/Application Support/RagVault/data/` | 可写 |
-| 模型（若拷贝） | `%APPDATA%\RagVault\models\` | 同上 | 首启从 resources 拷贝 |
-| 日志 | `%APPDATA%\RagVault\logs\` | 同上 | 滚动，保留 7 天 |
+| 关系库 + 向量库 + 上传 | `%APPDATA%\com.ragvault.desktop\data\` | `~/Library/Application Support/<identifier>/data/` | 可写 |
+| 模型（若拷贝） | `%APPDATA%\com.ragvault.desktop\data\models\` | 同上 | 首启从 resources 拷贝 |
+| 日志 | `%APPDATA%\com.ragvault.desktop\data\backend.log` | 同上 | 由 shell 重定向后端 stdout/stderr |
 | 内置资源 | 安装目录 | `.app/Contents/Resources` | **只读** |
 
 Rust 侧用 `app.path().app_data_dir()` 取路径，通过 `--data-dir` 参数传给 sidecar，**不要在 Python 里猜路径**（打包后的 `__file__` 不可靠）。
@@ -455,18 +455,23 @@ Rust 侧用 `app.path().app_data_dir()` 取路径，通过 `--data-dir` 参数�
 
 **结论：M0 验收通过。** `python scripts/run_desktop.py` 一个进程就能提供完整应用，不依赖 Docker、不依赖 Postgres/Chroma 服务端。
 
-> 开发期注意：`spa.py` 会缓存渲染后的 `index.html`，改完前端 `npm run build` 之后**必须重启 `run_desktop.py`**，否则拿到的是旧 bundle 的 hash。
+> 开发期注意：`spa.py` 曾把渲染后的 `index.html` 永久缓存，导致改完前端 `npm run build` 后页面还是旧 bundle。
+> 现在缓存按 `(st_mtime_ns, st_size)` 失效，重建后刷新即可，不必重启后端。
 
 顺带修掉一个前端渲染 bug：`AnimatePresence` 里的乐观消息气泡和 `StreamingBubble` 没有 `key`，状态清空后旧的 DOM 节点不会被卸载，导致同一个提问渲染两次。已给两处补上 `key`，并用「比较已持久化消息文本」代替原来的「比较消息条数」判断（后者在两次 invalidate 乱序时会误判）。
 
 ### M1：PyInstaller 打包（1–2 天）⭐ 风险最高
 
 - [x] `backend/ragvault-backend.spec`：onedir（**没有**用 onefile，每次启动解压到 temp、慢且杀软误报高）
-- [x] `--collect-all` 等价配置：`chromadb`、`onnxruntime`、`fastembed`、`tiktoken`、`tiktoken_ext`、`pymupdf`(fitz)、`tokenizers`、`huggingface_hub`
+- [x] `--collect-all` 等价配置：`chromadb`、`onnxruntime`、`fastembed`、`tiktoken`、`tiktoken_ext`、`pymupdf`(fitz)、`tokenizers`、`huggingface_hub`，以及 PDF 分层解析用的 `rapidocr_onnxruntime`（含三个 ONNX 模型）、`cv2`、`shapely`、`pyclipper`
 - [x] `datas` 包含：`frontend/dist` → `frontend/dist`、fastembed 模型 cache → `fastembed`（`alembic` 已随 Docker 移除，不再收集）
 - [x] 手工验证：`dist/ragvault-backend/ragvault-backend.exe --data-dir ./tmp --port 0` → 打印 `RAGVAULT_READY port=…`
 
-**产物**：`dist/ragvault-backend/`，**321 MB**（`_internal/` + `ragvault-backend.exe` 28 MB），构建约 84 秒。
+**产物**：`dist/ragvault-backend/`，**406 MB**（`_internal/` + `ragvault-backend.exe` 28 MB），构建约 5 分钟。
+其中 OCR 栈占大头：`cv2/cv2.pyd` 71 MB、`rapidocr` 的三个 ONNX 模型 16 MB、
+`onnxruntime` 37 MB、`shapely`/GEOS 约 6 MB。曾经剔除掉 `opencv_videoio_ffmpeg*.dll`（27 MB）、
+`pymupdf/mupdf-devel`（5 MB）与 `cv2/data/haarcascade_*.xml`（9 MB）——三者都不在
+PDF→图像→OCR 这条路径上（详见 spec 里的 `_DROP_BINARY_NAMES` 注释）。
 
 #### 入口拆分
 
@@ -568,7 +573,7 @@ hiddenimports += collect_submodules("tiktoken") + collect_submodules("tiktoken_e
 **三处与原方案的偏离，以及为什么**
 
 1. **不用 `externalBin` / `tauri-plugin-shell`，改用 `bundle.resources` + `std::process::Command`。**
-   `externalBin` 只接受**单个可执行文件**，而 PyInstaller 产物是「exe + `_internal/`」的 onedir 目录（321 MB），塞不进 sidecar 模型。用 `resources` 把整个目录带上，Rust 侧用标准库 spawn，顺带省掉 shell 插件的一整套权限声明。
+   `externalBin` 只接受**单个可执行文件**，而 PyInstaller 产物是「exe + `_internal/`」的 onedir 目录（406 MB），塞不进 sidecar 模型。用 `resources` 把整个目录带上，Rust 侧用标准库 spawn，顺带省掉 shell 插件的一整套权限声明。
    代价：需要自己解析 stdout 握手 —— 而这本来就是方案要求的。
 
 2. **`RunEvent::Exit` 之外再加 Windows Job Object。**
@@ -654,7 +659,7 @@ cd src-tauri; cargo build; .\target\debug\ragvault-desktop.exe
 cd frontend; $env:TMPDIR="$PWD\.esbuild-tmp"; $env:TEMP="$env:TMPDIR"; $env:TMP="$env:TMPDIR"; npm run build
 # 2) 同步 bundle 到 PyInstaller 产物（tauri 不重新打包 PyInstaller 产物！）
 Copy-Item frontend/dist/* dist/ragvault-backend/_internal/frontend/dist/ -Recurse -Force
-# 3) 发布构建（release profile 冷编译约 5–8 分钟 + NSIS 打包 + 复制 321 MB 资源）
+# 3) 发布构建（release profile 冷编译约 2–8 分钟 + NSIS 打包 + 复制 406 MB 资源）
 $env:PATH = "C:\Users\<you>\rust-rustup\toolchains\stable-x86_64-pc-windows-msvc\bin;" + $env:PATH
 $env:CARGO_HOME = "C:\Users\<you>\rust-cargo"
 cd RagVault; frontend\node_modules\.bin\tauri build
@@ -682,15 +687,24 @@ Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wai
 
 **M4 验收记录（2026-10-27）**
 
-| 项 | 结果 |
+| 项 | 结果（2.1.0，2026-10-29） |
 | --- | --- |
-| release 壳编译 | `Finished release profile in 2m 31s`，`target/release/ragvault-desktop.exe` |
-| NSIS 打包 | `RagVault_1.3.0_x64-setup.exe` **143,474,503 字节（136.83 MiB）** |
-| 静默安装 | `/S` 从 ASCII 路径 → `%LOCALAPPDATA%\RagVault`（exe 4.9 MB + backend + uninstall.exe） |
-| 安装后启动 | 窗口标题 `RagVault`，后端 `RAGVAULT_READY port=60456`，`/health` → `{"status":"ok","version":"1.3.0"}`，`/config` → `{"embedded":true,"version":"1.3.0",…}` |
-| 安装后前端 bundle | `assets/index-BgXMaQG_.js`（与源码构建一致） |
+| release 壳编译 | `Finished release profile in 1m 53s`，`target/release/ragvault-desktop.exe`（7,697,920 B，ProductVersion 2.1.0） |
+| NSIS 打包 | `RagVault_2.1.0_x64-setup.exe` **178,098,441 字节（169.85 MiB）** |
+| 静默安装 | `/S` 从 ASCII 路径 → `%LOCALAPPDATA%\RagVault`（`ragvault-desktop.exe` + `backend\` + `uninstall.exe`，23.2 秒） |
+| 安装后启动 | 后端 `RAGVAULT_READY port=61515`，`/health` → `{"status":"ok","version":"2.1.0"}` |
+| 本地 token 闸门 | 无 `X-RagVault-Token` 调 `/api/auth/login` → **401**；从 `index.html` 的 `<meta name="ragvault-token">` 取到 32 位 token 后正常 |
+| 安装后前端 bundle | `assets/index-C8W6iVuc.js`（与源码构建一致） |
+| 安装后 OCR | 7 页扫描件 → `ocr_pages=5`、`mean_confidence=0.987`、`text_chars=6876`、8 个 chunk；`.md`/`.csv`/`.docx`/`.doc` 均 `processed` |
+| 冻结产物自测 | `--port 8791` 起 exe 后同样跑通上述五项（不经安装步骤） |
 | 静默卸载 | exit 0，`%LOCALAPPDATA%\RagVault` 完全移除 |
+| 安装包体积 | 136.83 MiB → **169.85 MiB**（+33 MiB，主要是 cv2 71 MB 与 rapidocr 的 ONNX 模型 16 MB） |
 | 代码签名 | **未做**（无 Authenticode 证书）。首次运行 SmartScreen 会拦，解决方式见下 |
+
+> 上表的「安装后 OCR」一项是这次打包最关键的验收点：PyInstaller 只会收集它看得见的
+> import，`rapidocr_onnxruntime` 的 ONNX 模型、`cv2` 的 `cv2.pyd`、`shapely` 的 GEOS DLL
+> 全靠 `collect_all` 显式带上。**源码树里这四样都装着，所以本地跑得通不能说明冻结包跑得通**，
+> 必须在装好的 exe 上跑一遍扫描件。
 
 > **未签名安装包的首次运行提示**：Windows 会弹「Windows 已保护你的电脑」。点「更多信息」→「仍要运行」即可；或对安装包右键 → 属性 → 勾选「解除锁定」。这段说明应写进发布说明，否则答辩现场容易被卡住。
 

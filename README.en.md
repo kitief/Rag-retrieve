@@ -20,13 +20,14 @@ All **answer generation** is delegated to a cloud LLM over an OpenAI-compatible 
 |------|---------|-------|
 | OS | Windows 10 1809+ / Windows 11 | Needs WebView2 (built into Win11; usually present on Win10 via Edge) |
 | RAM | 8GB minimum | Backend process + WebView2 + embedding model |
-| Disk | 1.5GB free | ~137 MiB installer, ~600 MB installed |
+| Disk | 1.5GB free | ~170 MiB installer, ~610 MB installed |
 | LLM API key | — | DeepSeek: https://platform.deepseek.com/api_keys |
 
 ### 1. Install
 
 Download and double-click `RagVault_2.1.0_x64-setup.exe`. Installs per-user to
-`%LOCALAPPDATA%\RagVault` (no admin rights); user data lives in `%APPDATA%\RagVault`.
+`%LOCALAPPDATA%\RagVault` (no admin rights); user data lives in
+`%APPDATA%\com.ragvault.desktop\data`.
 
 > **First run**: the installer is not code-signed, so SmartScreen will warn. Click "More info" →
 > "Run anyway", or right-click the installer → Properties → check "Unblock" before installing.
@@ -54,25 +55,31 @@ RagVault **is** a Windows desktop app: double-click the icon and the Tauri shell
 PyInstaller-frozen FastAPI backend (SQLite + embedded Chroma) behind a native WebView2 window.
 No Docker, no Python install, no browser.
 
-**Installer**: `src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe` (~137 MiB)
+**Installer**: `src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe` (~170 MiB)
 
-> That name is what a build **of this source** produces. If the repo only contains
-> `RagVault_1.3.0_x64-setup.exe`, that is the previous alpha — it predates the layered PDF
+> The same file is attached to the
+> [alpha-v2.1 release](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
+> (the repository is private, so downloading it needs a GitHub login).
+> If the repo only contains `RagVault_1.3.0_x64-setup.exe`, that is the previous
+> alpha — it predates the layered PDF
 > parsing and the persisted connection state described here.
 
 **Building from source** (needs the Rust MSVC toolchain, Python 3.11 and Node 20+):
 
 ```powershell
-# 1) Frontend
+# 1) Frontend first — the spec packs frontend\dist into the frozen output
 cd frontend; npm run build
-# 2) Freeze the backend (~5 min, 321 MB output)
+# 2) Freeze the backend (~5 min, ~406 MB output)
 .venv-desktop\Scripts\pyinstaller backend\ragvault-backend.spec
-# 3) Re-sync the bundle into the frozen output (tauri will not rebuild it for you)
-Copy-Item frontend\dist\* dist\ragvault-backend\_internal\frontend\dist\ -Recurse -Force
-# 4) Build the installer (needs a proxy for the first NSIS download)
+# 3) Build the installer (needs a proxy for the first NSIS download)
 $env:https_proxy="http://127.0.0.1:7897"
 frontend\node_modules\.bin\tauri build
 ```
+
+> Step 2 collects `frontend/dist` into
+> `dist\ragvault-backend\_internal\frontend\dist`, so the frontend must be built
+> first. After a frontend change, just rerun steps 2 and 3 — there is nothing to
+> copy by hand.
 
 The full design trade-offs, pitfalls and acceptance checklist are in
 [docs/desktop-packaging.md](docs/desktop-packaging.md) (Chinese).
@@ -84,7 +91,7 @@ Runtime shape:
 | Database | SQLite (WAL) |
 | Vector store | Embedded Chroma (PersistentClient) |
 | Startup | Double-click the exe |
-| Data location | `%APPDATA%\RagVault` |
+| Data location | `%APPDATA%\com.ragvault.desktop\data` |
 | Install location | `%LOCALAPPDATA%\RagVault` |
 | Upload cap | 500 MB |
 | Access | Native window (backend listens on loopback only) |
@@ -113,8 +120,8 @@ FastAPI Backend (single Python process, bound to 127.0.0.1)
    └── Recommendation Service
         └── LangGraph → LLM → personalised Markdown study plan
    │
-   ├── SQLite (%APPDATA%\RagVault\ragvault.db — users, chats, messages, documents, quizzes, notes)
-   ├── Embedded ChromaDB 0.5.18 (%APPDATA%\RagVault\chroma, per chat_id collection)
+   ├── SQLite (%APPDATA%\com.ragvault.desktop\data\ragvault.db — users, chats, messages, documents, quizzes, notes)
+   ├── Embedded ChromaDB 0.5.18 (%APPDATA%\com.ragvault.desktop\data\chroma, per chat_id collection)
    └── Cloud LLM (OpenAI-compatible Chat Completions API — DeepSeek by default)
 ```
 
@@ -322,7 +329,7 @@ No deviations from the specified stack were made.
 ## ⚙️ Configuration
 
 Day-to-day use needs no configuration file at all — the API key, language and model live in
-the in-app Settings dialog and are stored in `%APPDATA%\RagVault\ragvault.db`. The environment
+the in-app Settings dialog and are stored in `%APPDATA%\com.ragvault.desktop\data\ragvault.db`. The environment
 variables below are only the built-in defaults, overridable from `.env` during development
 (see `.env.example`):
 
@@ -353,7 +360,7 @@ variables below are only the built-in defaults, overridable from `.env` during d
 | `CHUNK_OVERLAP` | `100` | Token overlap between chunks |
 | `TOP_K` | `5` | Number of chunks to retrieve per query |
 | `WHISPER_DEVICE` | `cpu` | Set to `cuda` if GPU available |
-| `DATA_DIR` | `%APPDATA%\RagVault` | Root for all mutable data (DB, vectors, uploads, model cache) |
+| `DATA_DIR` | `%APPDATA%\com.ragvault.desktop\data` | Root for all mutable data (DB, vectors, uploads, model cache) |
 | `JWT_SECRET` | *(built-in default)* | Random 32+ char string for JWT signing |
 
 ---
@@ -430,7 +437,7 @@ npm install --registry https://registry.npmmirror.com
 .\scripts\dev.cmd -Stop           # Stop every related process
 ```
 
-The script brings the API up on `http://127.0.0.1:8000` with `--reload` (any change under `backend/` restarts it), then starts Vite on `http://127.0.0.1:3000`, where `/api` is proxied to the backend by `vite.config.ts`. Data goes to `.desktop-data\` (SQLite + embedded Chroma), completely separate from the installed app's data in `%APPDATA%\RagVault`.
+The script brings the API up on `http://127.0.0.1:8000` with `--reload` (any change under `backend/` restarts it), then starts Vite on `http://127.0.0.1:3000`, where `/api` is proxied to the backend by `vite.config.ts`. Data goes to `.desktop-data\` (SQLite + embedded Chroma), completely separate from the installed app's data in `%APPDATA%\com.ragvault.desktop\data`.
 
 > **Why the entry point is `.cmd` and not `.ps1`**
 >
@@ -536,7 +543,7 @@ development, `scripts\dev.cmd` shows the backend output directly.
 .\scripts\dev.cmd -Stop     # Stop every related process (backend + Vite)
 
 # Data directory (delete to factory-reset)
-Remove-Item -Recurse "$env:APPDATA\RagVault"
+Remove-Item -Recurse "$env:APPDATA\com.ragvault.desktop"
 ```
 
 ---

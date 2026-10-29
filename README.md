@@ -20,13 +20,14 @@
 |------|---------|-------|
 | 操作系统 | Windows 10 1809+ / Windows 11 | 需要 WebView2（Win11 自带，Win10 一般已随 Edge 安装） |
 | 内存 | 最低 8GB | 后端进程 + WebView2 + 嵌入模型 |
-| 磁盘 | 1.5GB 可用空间 | 安装包约 137 MiB，安装后约 600 MB |
+| 磁盘 | 1.5GB 可用空间 | 安装包约 170 MiB，安装后约 610 MB |
 | LLM API Key | — | DeepSeek：https://platform.deepseek.com/api_keys |
 
 ### 1. 安装
 
 下载并双击 `RagVault_2.1.0_x64-setup.exe`。安装位置为
-`%LOCALAPPDATA%\RagVault`（无需管理员权限），用户数据在 `%APPDATA%\RagVault`。
+`%LOCALAPPDATA%\RagVault`（无需管理员权限），用户数据在
+`%APPDATA%\com.ragvault.desktop\data`。
 
 > **首次运行**：安装包未做代码签名，Windows SmartScreen 会提示「已保护你的电脑」。
 > 点「更多信息」→「仍要运行」；或对安装包右键 → 属性 → 勾选「解除锁定」再装。
@@ -53,24 +54,27 @@ RagVault 就是一个 **Windows 桌面应用**：双击图标启动，后端（P
 FastAPI + SQLite + 嵌入式 Chroma）由 Tauri 壳自动拉起，界面在原生 WebView2 窗口里运行。
 不需要 Docker、不需要 Python、不需要浏览器。
 
-**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe`（约 137 MiB）
+**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe`（约 170 MiB）
 
-> 该路径是**从本版本源码构建后**的产物名。仓库里若只存在 `RagVault_1.3.0_x64-setup.exe`，
-> 那是上一个 alpha 的构建，不含本文档描述的 PDF 分层解析与连接状态持久化。
+> 也可以直接从 [Releases](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
+> 下载同一个文件（仓库是私有的，需登录 GitHub 才能下载）。
+> 仓库里若只存在 `RagVault_1.3.0_x64-setup.exe`，那是上一个 alpha 的构建，
+> 不含本文档描述的 PDF 分层解析与连接状态持久化。
 
 **从源码构建**（需要 Rust MSVC 工具链 + Python 3.11 + Node 20+）：
 
 ```powershell
-# 1) 前端
+# 1) 前端（必须先做：spec 会把 frontend\dist 打进冻结产物）
 cd frontend; npm run build
-# 2) 冻结后端（约 5 分钟，产物 321 MB）
+# 2) 冻结后端（约 5 分钟，产物约 406 MB）
 .venv-desktop\Scripts\pyinstaller backend\ragvault-backend.spec
-# 3) 重新同步前端 bundle 进冻结产物（tauri 不会替你重打包）
-Copy-Item frontend\dist\* dist\ragvault-backend\_internal\frontend\dist\ -Recurse -Force
-# 4) 打安装包（首次需代理下载 NSIS）
+# 3) 打安装包（首次需联网下载 NSIS）
 $env:https_proxy="http://127.0.0.1:7897"
 frontend\node_modules\.bin\tauri build
 ```
+
+> 第 2 步会把 `frontend/dist` 一起收进 `dist\ragvault-backend\_internal\frontend\dist`，
+> 所以**前端要先生成**；改完前端只重跑第 2、3 步即可，不要再手工拷贝 dist。
 
 完整的设计权衡、踩坑记录与验收清单见
 [docs/desktop-packaging.md](docs/desktop-packaging.md)。
@@ -82,7 +86,7 @@ frontend\node_modules\.bin\tauri build
 | 数据库 | SQLite（WAL） |
 | 向量库 | 嵌入式 Chroma（PersistentClient） |
 | 启动 | 双击 exe |
-| 数据位置 | `%APPDATA%\RagVault` |
+| 数据位置 | `%APPDATA%\com.ragvault.desktop\data` |
 | 安装位置 | `%LOCALAPPDATA%\RagVault` |
 | 资源上传上限 | 500 MB |
 | 访问方式 | 原生窗口（后端只监听回环端口） |
@@ -111,8 +115,8 @@ FastAPI 后端 (单个 Python 进程，仅监听 127.0.0.1)
    └── 推荐服务
         └── LangGraph → LLM → 个性化 Markdown 学习计划
    │
-   ├── SQLite（%APPDATA%\RagVault\ragvault.db：用户、会话、消息、文档、测验、笔记）
-   ├── 嵌入式 ChromaDB 0.5.18（%APPDATA%\RagVault\chroma，每个 chat_id 一个 collection）
+   ├── SQLite（%APPDATA%\com.ragvault.desktop\data\ragvault.db：用户、会话、消息、文档、测验、笔记）
+   ├── 嵌入式 ChromaDB 0.5.18（%APPDATA%\com.ragvault.desktop\data\chroma，每个 chat_id 一个 collection）
    └── 云端 LLM（OpenAI 兼容的 Chat Completions 接口 —— 默认 DeepSeek）
 ```
 
@@ -298,7 +302,7 @@ OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）�
 ## ⚙️ 配置
 
 日常使用不需要碰任何配置文件 —— API Key、语言、模型都在应用内的「设置」对话框里，
-保存在 `%APPDATA%\RagVault\ragvault.db`。下面这些环境变量只是内置默认值，
+保存在 `%APPDATA%\com.ragvault.desktop\data\ragvault.db`。下面这些环境变量只是内置默认值，
 供开发时用 `.env` 覆盖（见 `.env.example`）：
 
 | 变量 | 默认值 | 说明 |
@@ -328,7 +332,7 @@ OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）�
 | `CHUNK_OVERLAP` | `100` | 相邻文本块之间的 token 重叠 |
 | `TOP_K` | `5` | 每次查询检索的文本块数量 |
 | `WHISPER_DEVICE` | `cpu` | 有 GPU 时可设为 `cuda` |
-| `DATA_DIR` | `%APPDATA%\RagVault` | 所有可变数据（数据库、向量、上传、模型缓存）的根目录 |
+| `DATA_DIR` | `%APPDATA%\com.ragvault.desktop\data` | 所有可变数据（数据库、向量、上传、模型缓存）的根目录 |
 | `JWT_SECRET` | *（内置默认值）* | 用于 JWT 签名的 32 位以上随机字符串 |
 
 ---
@@ -405,7 +409,7 @@ npm install --registry https://registry.npmmirror.com
 .\scripts\dev.cmd -Stop           # 停掉所有相关进程
 ```
 
-脚本会先把 API 拉到 `http://127.0.0.1:8000`（带 `--reload`，改 `backend/` 下任何文件自动重启），再起 Vite 到 `http://127.0.0.1:3000`，`/api` 通过 `vite.config.ts` 的代理转到后端。数据落在 `.desktop-data\`（SQLite + 嵌入式 Chroma），与安装版在 `%APPDATA%\RagVault` 的数据完全隔开。
+脚本会先把 API 拉到 `http://127.0.0.1:8000`（带 `--reload`，改 `backend/` 下任何文件自动重启），再起 Vite 到 `http://127.0.0.1:3000`，`/api` 通过 `vite.config.ts` 的代理转到后端。数据落在 `.desktop-data\`（SQLite + 嵌入式 Chroma），与安装版在 `%APPDATA%\com.ragvault.desktop\data` 的数据完全隔开。
 
 > **为什么入口是 `.cmd` 而不是 `.ps1`**
 >
@@ -497,7 +501,7 @@ npm run lint
 .\scripts\dev.cmd -Stop     # 停掉所有相关进程（后端 + Vite）
 
 # 数据目录（删掉即恢复出厂状态）
-Remove-Item -Recurse "$env:APPDATA\RagVault"
+Remove-Item -Recurse "$env:APPDATA\com.ragvault.desktop"
 ```
 
 ---
