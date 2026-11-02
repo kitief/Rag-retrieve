@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronRight, XCircle, CheckCircle2, BookOpen, RotateCcw, Sparkles } from 'lucide-react'
+import { ChevronRight, XCircle, CheckCircle2, BookOpen, RotateCcw, Sparkles, GraduationCap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
+import { StudyPlanDialog } from '@/components/quiz/StudyPlanDialog'
 import { useT } from '@/i18n/useT'
 import type { Quiz, QuizResult, MCQQuestion } from '@/types'
 
@@ -99,14 +100,22 @@ export function QuizCard({ quiz, onSubmit, isSubmitting }: QuizCardProps) {
 
 interface QuizResultsProps {
   result: QuizResult
-  onRecommendations?: () => void
+  /** Chat the quiz belongs to — needed to fetch the study plan. */
+  chatId?: string
   onRetry: () => void
   onGenerateRemedialNotes?: () => void
   isGeneratingRemedial?: boolean
 }
 
-export function QuizResults({ result, onRetry, onGenerateRemedialNotes, isGeneratingRemedial }: QuizResultsProps) {
+export function QuizResults({
+  result,
+  chatId,
+  onRetry,
+  onGenerateRemedialNotes,
+  isGeneratingRemedial,
+}: QuizResultsProps) {
   const t = useT()
+  const [planOpen, setPlanOpen] = useState(false)
   const pct = Math.round(result.score)
   const circumference = 2 * Math.PI * 40
 
@@ -211,6 +220,15 @@ export function QuizResults({ result, onRetry, onGenerateRemedialNotes, isGenera
 
       {/* Actions */}
       <div className="flex flex-col gap-2 pt-2">
+        <Button
+          onClick={() => setPlanOpen(true)}
+          disabled={!chatId}
+          variant="outline"
+          className="w-full border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 h-9 text-xs font-semibold rounded-xl"
+        >
+          <GraduationCap className="w-3.5 h-3.5 mr-1.5" />
+          {t('quiz.generatePlan')}
+        </Button>
         {onGenerateRemedialNotes && (
           <Button
             onClick={onGenerateRemedialNotes}
@@ -225,6 +243,8 @@ export function QuizResults({ result, onRetry, onGenerateRemedialNotes, isGenera
           <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> {t('quiz.tryAnother')}
         </Button>
       </div>
+
+      <StudyPlanDialog chatId={chatId} open={planOpen} onOpenChange={setPlanOpen} />
     </motion.div>
   )
 }

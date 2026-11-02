@@ -12,12 +12,16 @@ Paths are derived from ``data_dir`` at construction time; an explicit
 environment variable always wins over the derived default.
 """
 from functools import lru_cache
+import logging
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 # ── Directory names under the data directory ──────────────────────────────────
 _DB_FILENAME = "ragvault.db"
@@ -25,9 +29,74 @@ _CHROMA_DIRNAME = "chroma"
 _UPLOADS_DIRNAME = "uploads"
 _MODELS_DIRNAME = "models"
 
+#: Per-install JWT signing key. Lives in the data directory, never in the repo:
+#: a key baked into the binary would let anyone mint a token for any install.
+_JWT_SECRET_FILENAME = ".jwt_secret"
+
+#: The placeholder that used to ship in ``.env``. Treated as "not configured":
+#: seeing it means this install has no real key yet, so one is generated.
+_INSECURE_JWT_SECRET = "change_this_to_a_long_random_secret_key_at_least_32_chars"
+
+#: Shortest key we accept. HS256 keys shorter than the 256-bit output weaken the
+#: MAC, and a truncated hand-edited value should be regenerated rather than used.
+_MIN_JWT_SECRET_LENGTH = 32
+
 # Uploads are streamed to disk in 1 MB chunks, but the parser still holds one
 # whole document in memory; 500 MB is a safe ceiling on a 8-16 GB laptop.
 _MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+
+
+def _read_jwt_secret_file(path: Path) -> str:
+    """Return the stored key, or "" when the file is missing/unusable."""
+    try:
+        existing = path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        logger.warning("[config] cannot read %s (%s); a new key will be generated", path, exc)
+        return ""
+    if len(existing) < _MIN_JWT_SECRET_LENGTH:
+        logger.warning(
+            "[config] %s holds a %d-character key (minimum %d); regenerating it",
+            path,
+            len(existing),
+            _MIN_JWT_SECRET_LENGTH,
+        )
+        return ""
+    return existing
+
+
+def _write_jwt_secret_file(path: Path, secret: str) -> bool:
+    """Persist the key owner-readable-only where the filesystem supports it."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # 0o600 is honoured on POSIX and ignored on Windows (NTFS ACLs apply).
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(secret + "\n")
+        return True
+    except OSError as exc:
+        logger.warning("[config] cannot write %s (%s)", path, exc)
+        return False
+
+
+def load_or_create_jwt_secret(root: Path) -> str:
+    """Read ``<root>/.jwt_secret``, creating it with a fresh random key if absent.
+
+    Returns "" only when the file cannot be written, in which case the caller
+    keeps whatever was configured — a read-only data directory must not stop the
+    application from starting.
+    """
+    path = root / _JWT_SECRET_FILENAME
+    existing = _read_jwt_secret_file(path)
+    if existing:
+        return existing
+
+    secret = secrets.token_urlsafe(48)
+    if not _write_jwt_secret_file(path, secret):
+        return ""
+    logger.info("[config] generated a new JWT signing key at %s", path)
+    return secret
 
 
 class Settings(BaseSettings):
@@ -46,7 +115,11 @@ class Settings(BaseSettings):
     database_url: str = ""
 
     # ── JWT Auth ──────────────────────────────────────────────────────────────
-    jwt_secret: str = "change_this_to_a_long_random_secret_key_at_least_32_chars"
+    # Leaving this empty is the normal case: the validator below generates a
+    # random key once and stores it in ``<data_dir>/.jwt_secret``, so every
+    # install signs with its own secret and no default lives in the source tree.
+    # Set JWT_SECRET only to force a shared key (tests, a server deployment).
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
@@ -167,6 +240,34 @@ class Settings(BaseSettings):
             self.upload_temp_dir = str(root / _UPLOADS_DIRNAME / "temp")
         if not self.hf_home:
             self.hf_home = str(root / _MODELS_DIRNAME)
+
+        # ── Per-install JWT signing key ───────────────────────────────────────
+        # An explicit, non-placeholder JWT_SECRET wins (tests and a server
+        # deployment need a shared key). Otherwise the key comes from
+        # ``<data_dir>/.jwt_secret``, generated on first start: a secret shipped
+        # inside the installer would let anyone forge a token for any install.
+        configured = (self.jwt_secret or "").strip()
+        if configured and configured != _INSECURE_JWT_SECRET:
+            if len(configured) < _MIN_JWT_SECRET_LENGTH:
+                raise ValueError(
+                    f"JWT_SECRET must be at least {_MIN_JWT_SECRET_LENGTH} characters; "
+                    "leave it empty to let the app generate one per install"
+                )
+            self.jwt_secret = configured
+        else:
+            generated = load_or_create_jwt_secret(root)
+            if generated:
+                self.jwt_secret = generated
+            else:
+                # Last resort: the data directory is read-only. Keep the process
+                # usable for this run rather than refusing to start, but say so
+                # loudly — tokens will not survive a restart.
+                logger.error(
+                    "[config] no writable data directory (%s): using an ephemeral JWT "
+                    "key, so existing sessions will be invalidated on restart",
+                    root,
+                )
+                self.jwt_secret = secrets.token_urlsafe(48)
 
         return self
 

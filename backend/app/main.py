@@ -22,7 +22,7 @@ from app.routers.notes import router as notes_router
 from app.routers.settings import router as settings_router
 
 # Reported by /health and /config, and shown in the OpenAPI schema.
-API_VERSION = "2.1.0"
+API_VERSION = "2.2.0"
 
 # Written by the Tauri shell when it spawns this process; the guard below stays
 # disabled when it is empty (tests, a bare backend-only dev run).

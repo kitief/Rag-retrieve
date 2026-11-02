@@ -2,7 +2,7 @@
 
 > 自托管 · RAG 驱动的 AI 学习系统 · 云端 LLM + 本地向量化
 >
-> **版本 `alpha-v1.3`** · 仓库地址：<https://github.com/kitief/Rag-retrieve>
+> **版本 `alpha-v2.2`** · 仓库地址：<https://github.com/kitief/Rag-retrieve>
 >
 > 简体中文 | [English](README.en.md)
 
@@ -25,7 +25,7 @@
 
 ### 1. 安装
 
-下载并双击 `RagVault_2.1.0_x64-setup.exe`。安装位置为
+下载并双击 `RagVault_2.2.0_x64-setup.exe`。安装位置为
 `%LOCALAPPDATA%\RagVault`（无需管理员权限），用户数据在
 `%APPDATA%\com.ragvault.desktop\data`。
 
@@ -54,7 +54,7 @@ RagVault 就是一个 **Windows 桌面应用**：双击图标启动，后端（P
 FastAPI + SQLite + 嵌入式 Chroma）由 Tauri 壳自动拉起，界面在原生 WebView2 窗口里运行。
 不需要 Docker、不需要 Python、不需要浏览器。
 
-**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe`（约 170 MiB）
+**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe`（约 170 MiB）
 
 > 也可以直接从 [Releases](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
 > 下载同一个文件（仓库是私有的，需登录 GitHub 才能下载）。
@@ -357,7 +357,7 @@ OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）�
 | `TOP_K` | `5` | 每次查询检索的文本块数量 |
 | `WHISPER_DEVICE` | `cpu` | 有 GPU 时可设为 `cuda` |
 | `DATA_DIR` | `%APPDATA%\com.ragvault.desktop\data` | 所有可变数据（数据库、向量、上传、模型缓存）的根目录 |
-| `JWT_SECRET` | *（内置默认值）* | 用于 JWT 签名的 32 位以上随机字符串 |
+| `JWT_SECRET` | *（留空即自动生成）* | JWT 签名密钥。留空时首次启动为本次安装随机生成，写入 `<数据目录>/.jwt_secret`，之后每次启动复用同一把；只有需要强制共享密钥时才手填（≥32 字符） |
 
 ---
 
@@ -381,7 +381,7 @@ OpenAI 兼容网关（Azure OpenAI、Moonshot、Qwen、自建的 vLLM……）�
 2. 输入主题（例如“神经网络”）并选择题目数量
 3. 点击 **Generate Quiz** —— LLM 会从相关文档片段中并行分批生成选择题
 4. 提交答案后可查看得分、解析和薄弱知识点
-5. 点击 **Get Recommendations**，基于你最近 5 次测验结果获得个性化的 Markdown 学习计划
+5. 在结果页点击 **生成学习计划**，会打开一个弹窗，基于你**最近 5 次测验**答错的知识点生成 Markdown 学习计划（含重点范围、复习策略、主动回忆技巧、下一步）。弹窗里可随时「重新生成」；计划是按需请求的，不打开弹窗就不会调用 LLM。
 
 ### AI 笔记
 
@@ -515,6 +515,10 @@ npm run lint
 
 `backend/tests/conftest.py` 中的 fixture 使用内存 SQLite，不依赖任何外部服务。
 
+当前规模：**141 个测试**（auth、解析器、PDF 分层流水线、摄取、进度、Chroma 守卫、连接状态持久化、JWT 密钥）。
+
+> `conftest.py` 会固定 `JWT_SECRET` 为测试专用值。否则每跑一次测试，都会在仓库里按「首次启动」逻辑生成一个 `.jwt_secret` 文件（该文件在 `.gitignore` 里，但仍属污染）。
+
 ---
 
 ## 🔧 运行与排障
@@ -632,10 +636,10 @@ LLM_API_KEY=not-needed-but-must-be-non-empty
 
 MIT License。详见 [LICENSE](LICENSE)。
 
-本版本（`alpha-v1.3`）衍生自 Meet Paladiya 的原始
+本版本（`alpha-v2.2`）衍生自 Meet Paladiya 的原始
 [RagVault](https://github.com/Meet-paladiya/RagVault) 项目。
 上游提交历史被有意丢弃；本仓库从单个 `alpha-v1.1` 提交开始，
-`alpha-v1.2` 增加了设置对话框，`alpha-v1.3` 增加了 Windows 桌面版
+`alpha-v1.2` 增加了设置对话框，`alpha-v2.2` 增加了 Windows 桌面版
 （Tauri v2 壳 + PyInstaller 后端，详见
 [docs/desktop-packaging.md](docs/desktop-packaging.md)）。
 

@@ -25,6 +25,10 @@ frontend/.vite/
 .env.local
 .env.*.local
 
+# Per-install JWT signing key (generated into the data directory on first run)
+.jwt_secret
+**/.jwt_secret
+
 # Uploads / data
 uploads/
 chroma_data/

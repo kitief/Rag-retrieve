@@ -2,6 +2,15 @@
 Pytest fixtures shared across all test modules.
 Uses SQLite in-memory for fast, isolated tests with no external dependencies.
 """
+import os
+
+# Pin the signing key before anything imports ``app.config``. Without this the
+# per-install key generator runs against the repository directory and leaves a
+# `.jwt_secret` file behind on every test session; it also makes tokens minted
+# by one test verifiable in another, which is what the fixtures below assume.
+# `test_jwt_secret.py` unsets this per-test to exercise the generator itself.
+os.environ.setdefault("JWT_SECRET", "test-only-signing-key-that-is-long-enough-32")
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient

@@ -804,7 +804,7 @@ export function ChatDetailPage() {
                 ) : quizResult ? (
                   <QuizResults
                     result={quizResult}
-                    onRecommendations={() => { }}
+                    chatId={chatId}
                     onRetry={() => { setActiveQuiz(null); setQuizResult(null); setSelectedQuizType(null) }}
                     onGenerateRemedialNotes={handleOpenRemedialNotes}
                     isGeneratingRemedial={generateRemedialNotes.isPending}

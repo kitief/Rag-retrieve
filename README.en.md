@@ -2,7 +2,7 @@
 
 > Self-Hosted · RAG-Powered AI Learning System · Cloud LLM + Local Embeddings
 >
-> **Release `alpha-v1.3`** · Repository: <https://github.com/kitief/Rag-retrieve>
+> **Release `alpha-v2.2`** · Repository: <https://github.com/kitief/Rag-retrieve>
 >
 > [简体中文](README.md) | English
 
@@ -25,7 +25,7 @@ All **answer generation** is delegated to a cloud LLM over an OpenAI-compatible 
 
 ### 1. Install
 
-Download and double-click `RagVault_2.1.0_x64-setup.exe`. Installs per-user to
+Download and double-click `RagVault_2.2.0_x64-setup.exe`. Installs per-user to
 `%LOCALAPPDATA%\RagVault` (no admin rights); user data lives in
 `%APPDATA%\com.ragvault.desktop\data`.
 
@@ -55,7 +55,7 @@ RagVault **is** a Windows desktop app: double-click the icon and the Tauri shell
 PyInstaller-frozen FastAPI backend (SQLite + embedded Chroma) behind a native WebView2 window.
 No Docker, no Python install, no browser.
 
-**Installer**: `src-tauri/target/release/bundle/nsis/RagVault_2.1.0_x64-setup.exe` (~170 MiB)
+**Installer**: `src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe` (~170 MiB)
 
 > The same file is attached to the
 > [alpha-v2.1 release](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
@@ -388,7 +388,7 @@ variables below are only the built-in defaults, overridable from `.env` during d
 | `TOP_K` | `5` | Number of chunks to retrieve per query |
 | `WHISPER_DEVICE` | `cpu` | Set to `cuda` if GPU available |
 | `DATA_DIR` | `%APPDATA%\com.ragvault.desktop\data` | Root for all mutable data (DB, vectors, uploads, model cache) |
-| `JWT_SECRET` | *(built-in default)* | Random 32+ char string for JWT signing |
+| `JWT_SECRET` | *(empty → generated)* | JWT signing key. Left empty, the first start generates one per install and stores it in `<data dir>/.jwt_secret`, reusing it on later starts. Set it only to force a shared key (≥32 chars) |
 
 ---
 
@@ -412,7 +412,7 @@ variables below are only the built-in defaults, overridable from `.env` during d
 2. Enter a topic (e.g., "neural networks") and choose number of questions
 3. Click **Generate Quiz** — the LLM creates MCQs from relevant document chunks in parallel batches
 4. Submit answers to see your score, explanations, and weak topics
-5. Click **Get Recommendations** for a personalized Markdown study plan based on your last 5 quiz results
+5. On the results screen click **Generate Study Plan** — a dialog appears with a Markdown study plan built from the topics you missed in your **last five quizzes** (focus areas, review strategy, active-recall tips, next steps). You can regenerate it from the dialog at any time; nothing is requested until you open it
 
 ### AI Notes
 
@@ -676,12 +676,12 @@ because the client refuses to send unauthenticated requests.
 
 MIT License. See [LICENSE](LICENSE) for details.
 
-This release (`alpha-v1.3`) is derived from the original
+This release (`alpha-v2.2`) is derived from the original
 [RagVault](https://github.com/Meet-paladiya/RagVault) project by Meet Paladiya.
 The upstream history is intentionally not carried over; this repository starts
 from a single `alpha-v1.1` commit, adds the settings dialog in `alpha-v1.2`, and
 adds the Windows desktop build (Tauri v2 shell + PyInstaller backend, see
-[docs/desktop-packaging.md](docs/desktop-packaging.md)) in `alpha-v1.3`.
+[docs/desktop-packaging.md](docs/desktop-packaging.md)) in `alpha-v2.2`.
 
 ---
 

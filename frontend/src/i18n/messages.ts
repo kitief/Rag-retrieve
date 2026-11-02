@@ -301,6 +301,17 @@ export const en = {
   'quiz.generatingRemedial': 'Generating Remedial Notes...',
   'quiz.generateRemedial': 'Generate Wrong Answers Notes & PDF',
   'quiz.tryAnother': 'Try Another Quiz',
+  'quiz.generatePlan': 'Generate Study Plan',
+  'quiz.planTitle': 'Your Study Plan',
+  'quiz.planDesc':
+    'Built from the questions you missed in your last five quizzes. Nothing is measured about you — it is just the weak topics you already gave us.',
+  'quiz.planGenerating': 'Reading your quiz history and drafting the plan…',
+  'quiz.planEmpty': 'No study plan was returned. Try again in a moment.',
+  'quiz.planFailed': 'Could not generate a study plan.',
+  'quiz.planRegenerate': 'Regenerate',
+  'quiz.planClose': 'Close',
+  'quiz.planUnavailable': 'Study plan unavailable',
+  'quiz.planHint': 'Finish a quiz first — the plan is built from the questions you missed.',
 
   // ── Quiz history page ─────────────────────────────────────────────────────
   'quizHistory.title': 'Quiz History',
@@ -658,6 +669,17 @@ export const zh: Record<MessageKey, string> = {
   'quiz.generatingRemedial': '正在生成错题笔记…',
   'quiz.generateRemedial': '生成错题笔记与 PDF',
   'quiz.tryAnother': '再测一次',
+  'quiz.generatePlan': '生成学习计划',
+  'quiz.planTitle': '专属学习计划',
+  'quiz.planDesc':
+    '根据你最近五次测验里答错的题生成，只看错题涉及的知识点，不追踪任何其他信息。',
+  'quiz.planGenerating': '正在读取测验记录并撰写计划…',
+  'quiz.planEmpty': '没有返回学习计划，请稍后再试。',
+  'quiz.planFailed': '生成学习计划失败。',
+  'quiz.planRegenerate': '重新生成',
+  'quiz.planClose': '关闭',
+  'quiz.planUnavailable': '学习计划暂不可用',
+  'quiz.planHint': '先完成一次测验——计划是由答错的题生成的。',
 
   // ── Quiz history page ─────────────────────────────────────────────────────
   'quizHistory.title': '测验记录',
