@@ -467,7 +467,7 @@ Rust 侧用 `app.path().app_data_dir()` 取路径，通过 `--data-dir` 参数�
 - [x] `datas` 包含：`frontend/dist` → `frontend/dist`、fastembed 模型 cache → `fastembed`（`alembic` 已随 Docker 移除，不再收集）
 - [x] 手工验证：`dist/ragvault-backend/ragvault-backend.exe --data-dir ./tmp --port 0` → 打印 `RAGVAULT_READY port=…`
 
-**产物**：`dist/ragvault-backend/`，**406 MB**（`_internal/` + `ragvault-backend.exe` 28 MB），构建约 5 分钟。
+**产物**：`dist/ragvault-backend/`，**410 MB**（`_internal/` + `ragvault-backend.exe` 28 MB），构建约 5 分钟。
 其中 OCR 栈占大头：`cv2/cv2.pyd` 71 MB、`rapidocr` 的三个 ONNX 模型 16 MB、
 `onnxruntime` 37 MB、`shapely`/GEOS 约 6 MB。曾经剔除掉 `opencv_videoio_ffmpeg*.dll`（27 MB）、
 `pymupdf/mupdf-devel`（5 MB）与 `cv2/data/haarcascade_*.xml`（9 MB）——三者都不在
@@ -573,7 +573,7 @@ hiddenimports += collect_submodules("tiktoken") + collect_submodules("tiktoken_e
 **三处与原方案的偏离，以及为什么**
 
 1. **不用 `externalBin` / `tauri-plugin-shell`，改用 `bundle.resources` + `std::process::Command`。**
-   `externalBin` 只接受**单个可执行文件**，而 PyInstaller 产物是「exe + `_internal/`」的 onedir 目录（406 MB），塞不进 sidecar 模型。用 `resources` 把整个目录带上，Rust 侧用标准库 spawn，顺带省掉 shell 插件的一整套权限声明。
+   `externalBin` 只接受**单个可执行文件**，而 PyInstaller 产物是「exe + `_internal/`」的 onedir 目录（410 MB），塞不进 sidecar 模型。用 `resources` 把整个目录带上，Rust 侧用标准库 spawn，顺带省掉 shell 插件的一整套权限声明。
    代价：需要自己解析 stdout 握手 —— 而这本来就是方案要求的。
 
 2. **`RunEvent::Exit` 之外再加 Windows Job Object。**
@@ -659,7 +659,7 @@ cd src-tauri; cargo build; .\target\debug\ragvault-desktop.exe
 cd frontend; $env:TMPDIR="$PWD\.esbuild-tmp"; $env:TEMP="$env:TMPDIR"; $env:TMP="$env:TMPDIR"; npm run build
 # 2) 同步 bundle 到 PyInstaller 产物（tauri 不重新打包 PyInstaller 产物！）
 Copy-Item frontend/dist/* dist/ragvault-backend/_internal/frontend/dist/ -Recurse -Force
-# 3) 发布构建（release profile 冷编译约 2–8 分钟 + NSIS 打包 + 复制 406 MB 资源）
+# 3) 发布构建（release profile 冷编译约 2–8 分钟 + NSIS 打包 + 复制 410 MB 资源）
 $env:PATH = "C:\Users\<you>\rust-rustup\toolchains\stable-x86_64-pc-windows-msvc\bin;" + $env:PATH
 $env:CARGO_HOME = "C:\Users\<you>\rust-cargo"
 cd RagVault; frontend\node_modules\.bin\tauri build
@@ -711,6 +711,26 @@ Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wai
 > 必须在装好的 exe 上跑一遍扫描件。
 
 > **未签名安装包的首次运行提示**：Windows 会弹「Windows 已保护你的电脑」。点「更多信息」→「仍要运行」即可；或对安装包右键 → 属性 → 勾选「解除锁定」。这段说明应写进发布说明，否则答辩现场容易被卡住。
+
+**M4 验收记录 —— 2.2.0（2026-11-02，当前版本）**
+
+| 项 | 结果 |
+| --- | --- |
+| 冻结后端 | `pyinstaller backend\ragvault-backend.spec` → `[spec] trimmed bundle: 153 binaries, 1788 data files`，`dist/ragvault-backend` **1942 个文件 / 430,091,493 B（410 MB）** |
+| release 壳编译 | `Finished \`release\` profile [optimized] target(s) in 4m 41s`，`ragvault-desktop.exe`（9,096,704 B，ProductVersion 2.2.0） |
+| NSIS 打包 | `RagVault_2.2.0_x64-setup.exe` **179,395,335 字节（171.08 MiB）**，sha256 `ff58960a…f9c856` |
+| 冻结产物自测 | `--port 8791` 起 exe：`{"status":"ok","version":"2.2.0"}`、`<数据目录>\.jwt_secret` 自动生成（64 字符）、SPA 引用 `index-BrbH-gQL.js`、扫描件 5 页 OCR 置信度 0.987 / 6876 字符 / 8 chunk、md/csv/docx/doc 全 `processed` |
+| 重启复用密钥 | 停掉 exe 再起，`.jwt_secret` 不变，重启前签发的 token 调 `/api/auth/me` 仍 200 |
+| 静默安装 | `/S` 从 ASCII 路径 → `%LOCALAPPDATA%\RagVault`，**24.0 秒**，**1944 个文件 / 439,288,559 B（418.9 MiB）** |
+| 稳定端口 | 首启后 `<数据目录>\app-port.txt` 内容 `47823`，后端监听 47823 —— 不再是 `--port 0` 的随机端口，因此 WebView2 的 origin（也就是 localStorage）才能跨启动复用 |
+| 本地 token 闸门 | 无 `X-RagVault-Token` 调 `/api` → **401**；从 `index.html` 的 `<meta name="ragvault-token">` 取到 32 位 token 后正常 |
+| 安装后前端 bundle | `assets/index-BrbH-gQL.js`，`theme-boot.js` 在 `<head>` 内 |
+| 安装后 OCR | 7 页扫描件 → `ocr_pages=5`、`mean_confidence=0.987`、`text_chars=6876`、8 个 chunk |
+| 静默卸载 | `uninstall.exe /S` → `%LOCALAPPDATA%\RagVault` 完全移除 |
+| 发布资产校验 | 走认证 API 下载 → 179,395,335 B、sha256 与本地一致（`VERIFY OK`） |
+
+> 2.2.0 相比 2.1.0 安装后多出 6.0 MiB、安装包多出 1.23 MiB，来自学习计划弹窗与
+> `react-markdown` 复用（无新依赖）；OCR 栈体积未变。
 
 ---
 

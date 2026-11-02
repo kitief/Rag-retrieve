@@ -20,7 +20,7 @@ All **answer generation** is delegated to a cloud LLM over an OpenAI-compatible 
 |------|---------|-------|
 | OS | Windows 10 1809+ / Windows 11 | Needs WebView2 (built into Win11; usually present on Win10 via Edge) |
 | RAM | 8GB minimum | Backend process + WebView2 + embedding model |
-| Disk | 1.5GB free | ~170 MiB installer, ~413 MiB installed |
+| Disk | 1.5GB free | ~171 MiB installer, ~419 MiB installed |
 | LLM API key | — | DeepSeek: https://platform.deepseek.com/api_keys |
 
 ### 1. Install
@@ -55,22 +55,21 @@ RagVault **is** a Windows desktop app: double-click the icon and the Tauri shell
 PyInstaller-frozen FastAPI backend (SQLite + embedded Chroma) behind a native WebView2 window.
 No Docker, no Python install, no browser.
 
-**Installer**: the source tree is at version `2.2.0`, so a fresh build produces
-`src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe` (~170 MiB).
+**Installer**: `RagVault_2.2.0_x64-setup.exe` from the
+[alpha-v2.2 release](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.2)
+(the repository is private, so downloading it needs a GitHub login).
+A fresh build lands in `src-tauri/target/release/bundle/nsis/` (~170 MiB).
 
-> The published installer is `RagVault_2.1.0_x64-setup.exe` from the
-> [alpha-v2.1 release](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
-> (the repository is private, so downloading it needs a GitHub login).
-> Everything added in `2.2.0` — the study-plan dialog, the per-install JWT key,
-> the theme and port fixes — currently exists **only in source**; build it with
-> the steps below to get an installer that contains them.
+> The source tree is at `2.2.0`. If the version after installing does not match,
+> you probably downloaded the `alpha-v2.1` build — that one has no study-plan
+> dialog and none of the per-install JWT key or theme/port fixes.
 
 **Building from source** (needs the Rust MSVC toolchain, Python 3.11 and Node 20+):
 
 ```powershell
 # 1) Frontend first — the spec packs frontend\dist into the frozen output
 cd frontend; npm run build
-# 2) Freeze the backend (~5 min, ~406 MB output)
+# 2) Freeze the backend (~5 min, ~410 MB output)
 .venv-desktop\Scripts\pyinstaller backend\ragvault-backend.spec
 # 3) Build the installer (needs a proxy for the first NSIS download)
 $env:https_proxy="http://127.0.0.1:7897"

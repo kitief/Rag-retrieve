@@ -20,7 +20,7 @@
 |------|---------|-------|
 | 操作系统 | Windows 10 1809+ / Windows 11 | 需要 WebView2（Win11 自带，Win10 一般已随 Edge 安装） |
 | 内存 | 最低 8GB | 后端进程 + WebView2 + 嵌入模型 |
-| 磁盘 | 1.5GB 可用空间 | 安装包约 170 MiB，安装后约 413 MiB |
+| 磁盘 | 1.5GB 可用空间 | 安装包约 171 MiB，安装后约 419 MiB |
 | LLM API Key | — | DeepSeek：https://platform.deepseek.com/api_keys |
 
 ### 1. 安装
@@ -54,20 +54,19 @@ RagVault 就是一个 **Windows 桌面应用**：双击图标启动，后端（P
 FastAPI + SQLite + 嵌入式 Chroma）由 Tauri 壳自动拉起，界面在原生 WebView2 窗口里运行。
 不需要 Docker、不需要 Python、不需要浏览器。
 
-**安装包**：源码版本为 `2.2.0`，构建产物位于
-`src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe`（约 170 MiB）。
+**安装包**：[alpha-v2.2](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.2)
+里的 `RagVault_2.2.0_x64-setup.exe`（仓库私有，需登录 GitHub 才能下载）。
+也可以自己构建，产物在 `src-tauri/target/release/bundle/nsis/` 下（约 170 MiB）。
 
-> 已发布的安装包是 [alpha-v2.1](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
-> 里的 `RagVault_2.1.0_x64-setup.exe`（仓库私有，需登录 GitHub 才能下载）。
-> `2.2.0` 的改动（学习计划弹窗、JWT 密钥按安装生成、主题与端口修复）目前**只在源码里**，
-> 要拿到对应安装包需按下面的步骤自行构建；`alpha-v2.1` 装出来的版本不含这些改动。
+> 当前源码版本 `2.2.0`。装好后版本不匹配，多半是拿到了 `alpha-v2.1` 的包
+> ——那一版没有学习计划弹窗，也没有按安装生成的 JWT 密钥与主题/端口修复。
 
 **从源码构建**（需要 Rust MSVC 工具链 + Python 3.11 + Node 20+）：
 
 ```powershell
 # 1) 前端（必须先做：spec 会把 frontend\dist 打进冻结产物）
 cd frontend; npm run build
-# 2) 冻结后端（约 5 分钟，产物约 406 MB）
+# 2) 冻结后端（约 5 分钟，产物约 410 MB）
 .venv-desktop\Scripts\pyinstaller backend\ragvault-backend.spec
 # 3) 打安装包（首次需联网下载 NSIS）
 $env:https_proxy="http://127.0.0.1:7897"
