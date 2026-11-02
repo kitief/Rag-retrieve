@@ -685,7 +685,10 @@ Start-Process C:\temp_rv\setup.exe -ArgumentList '/S' -Wait
 Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wait
 ```
 
-**M4 验收记录（2026-10-27）**
+**M4 验收记录 —— 2.1.0 那一版的实测数据（历史存档，不是当前版本）**
+
+> 下表里的 `2.1.0` 是当时打包产物的版本号，保留原样以便和已发布的 `alpha-v2.1` 资产对上号；
+> 当前版本见 `frontend/package.json`。下一版重新打包时请另起一张表，不要就地覆盖这一张。
 
 | 项 | 结果（2.1.0，2026-10-29） |
 | --- | --- |

@@ -6,7 +6,7 @@
 >
 > 简体中文 | [English](README.en.md)
 
-一个面向学生的自托管检索增强生成（RAG）学习平台。上传 PDF 和 PPTX 文件即可创建「知识空间」，随后可以进行提问、生成测验、创建 AI 学习笔记、追踪薄弱知识点，并获得个性化学习建议。
+一个面向学生的自托管检索增强生成（RAG）学习平台。上传 PDF、PPTX/PPT、Word（DOCX/DOC）、Markdown、纯文本或 CSV 表格即可创建「知识空间」，随后可以进行提问、生成测验、创建 AI 学习笔记、追踪薄弱知识点，并获得个性化学习建议。
 
 所有**答案生成**都通过 OpenAI 兼容接口交给云端 LLM 完成（默认使用 **DeepSeek**，也支持任何兼容端点）。**向量化则全程在本地完成**，由 FastEmbed ONNX 负责，因此你的文档只会在本机被转换成向量 —— 只有检索命中的片段会发送给模型服务商。
 
@@ -54,12 +54,13 @@ RagVault 就是一个 **Windows 桌面应用**：双击图标启动，后端（P
 FastAPI + SQLite + 嵌入式 Chroma）由 Tauri 壳自动拉起，界面在原生 WebView2 窗口里运行。
 不需要 Docker、不需要 Python、不需要浏览器。
 
-**安装包**：`src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe`（约 170 MiB）
+**安装包**：源码版本为 `2.2.0`，构建产物位于
+`src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe`（约 170 MiB）。
 
-> 也可以直接从 [Releases](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
-> 下载同一个文件（仓库是私有的，需登录 GitHub 才能下载）。
-> 仓库里若只存在 `RagVault_1.3.0_x64-setup.exe`，那是上一个 alpha 的构建，
-> 不含本文档描述的 PDF 分层解析与连接状态持久化。
+> 已发布的安装包是 [alpha-v2.1](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
+> 里的 `RagVault_2.1.0_x64-setup.exe`（仓库私有，需登录 GitHub 才能下载）。
+> `2.2.0` 的改动（学习计划弹窗、JWT 密钥按安装生成、主题与端口修复）目前**只在源码里**，
+> 要拿到对应安装包需按下面的步骤自行构建；`alpha-v2.1` 装出来的版本不含这些改动。
 
 **从源码构建**（需要 Rust MSVC 工具链 + Python 3.11 + Node 20+）：
 

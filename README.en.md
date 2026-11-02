@@ -6,7 +6,7 @@
 >
 > [简体中文](README.md) | English
 
-A self-hosted Retrieval-Augmented Generation (RAG) learning platform for students. Upload PDF and PPTX files to create "knowledge spaces," then ask questions, generate quizzes, create AI study notes, track weak topics, and get personalized study recommendations.
+A self-hosted Retrieval-Augmented Generation (RAG) learning platform for students. Upload PDF, PPTX/PPT, Word (DOCX/DOC), Markdown, plain-text or CSV files to create "knowledge spaces," then ask questions, generate quizzes, create AI study notes, track weak topics, and get personalized study recommendations.
 
 All **answer generation** is delegated to a cloud LLM over an OpenAI-compatible API (**DeepSeek** by default, any compatible endpoint supported). **Embeddings stay local** via FastEmbed ONNX, so your documents are only ever reduced to embeddings on your own machine — only the retrieved snippets are sent to the model provider.
 
@@ -55,14 +55,15 @@ RagVault **is** a Windows desktop app: double-click the icon and the Tauri shell
 PyInstaller-frozen FastAPI backend (SQLite + embedded Chroma) behind a native WebView2 window.
 No Docker, no Python install, no browser.
 
-**Installer**: `src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe` (~170 MiB)
+**Installer**: the source tree is at version `2.2.0`, so a fresh build produces
+`src-tauri/target/release/bundle/nsis/RagVault_2.2.0_x64-setup.exe` (~170 MiB).
 
-> The same file is attached to the
+> The published installer is `RagVault_2.1.0_x64-setup.exe` from the
 > [alpha-v2.1 release](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.1)
 > (the repository is private, so downloading it needs a GitHub login).
-> If the repo only contains `RagVault_1.3.0_x64-setup.exe`, that is the previous
-> alpha — it predates the layered PDF
-> parsing and the persisted connection state described here.
+> Everything added in `2.2.0` — the study-plan dialog, the per-install JWT key,
+> the theme and port fixes — currently exists **only in source**; build it with
+> the steps below to get an installer that contains them.
 
 **Building from source** (needs the Rust MSVC toolchain, Python 3.11 and Node 20+):
 
