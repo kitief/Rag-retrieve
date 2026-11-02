@@ -96,7 +96,6 @@ export const en = {
   'sidebar.connection': 'Model connection',
   'sidebar.connectionOn': 'AI connected · {model}',
   'sidebar.connectionOff': 'AI not connected',
-  'sidebar.connectionUnverified': 'AI not connected — open settings',
   'sidebar.connectionHintOn': 'Connected to {base_url}. Click to review.',
   'sidebar.connectionHintOff': 'No working connection. Click to configure the API key.',
 
@@ -310,8 +309,6 @@ export const en = {
   'quiz.planFailed': 'Could not generate a study plan.',
   'quiz.planRegenerate': 'Regenerate',
   'quiz.planClose': 'Close',
-  'quiz.planUnavailable': 'Study plan unavailable',
-  'quiz.planHint': 'Finish a quiz first — the plan is built from the questions you missed.',
 
   // ── Quiz history page ─────────────────────────────────────────────────────
   'quizHistory.title': 'Quiz History',
@@ -472,7 +469,6 @@ export const zh: Record<MessageKey, string> = {
   'sidebar.connection': '模型连接',
   'sidebar.connectionOn': 'AI 已连接 · {model}',
   'sidebar.connectionOff': 'AI 未连接',
-  'sidebar.connectionUnverified': 'AI 未连接 —— 打开设置',
   'sidebar.connectionHintOn': '已连接到 {base_url}。点击查看。',
   'sidebar.connectionHintOff': '当前没有可用连接。点击配置 API Key。',
 
@@ -678,8 +674,6 @@ export const zh: Record<MessageKey, string> = {
   'quiz.planFailed': '生成学习计划失败。',
   'quiz.planRegenerate': '重新生成',
   'quiz.planClose': '关闭',
-  'quiz.planUnavailable': '学习计划暂不可用',
-  'quiz.planHint': '先完成一次测验——计划是由答错的题生成的。',
 
   // ── Quiz history page ─────────────────────────────────────────────────────
   'quizHistory.title': '测验记录',
