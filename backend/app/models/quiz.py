@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Float, JSO
 from sqlalchemy import Uuid
 from sqlalchemy.orm import relationship
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database import Base
 
 class Quiz(Base):
@@ -14,6 +14,6 @@ class Quiz(Base):
     total_questions = Column(Integer, nullable=False)
     weak_topics = Column(JSON, nullable=True)
     questions = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     chat = relationship("Chat", back_populates="quizzes")

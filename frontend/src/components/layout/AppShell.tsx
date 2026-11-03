@@ -5,8 +5,12 @@ interface AppShellProps {
   children: React.ReactNode
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'ragvault-sidebar-collapsed'
+
 export function AppShell({ children }: AppShellProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+  )
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -19,7 +23,13 @@ export function AppShell({ children }: AppShellProps) {
       {/* Sidebar */}
       <Sidebar
         collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((v) => !v)}
+        onToggle={() =>
+          setSidebarCollapsed((v) => {
+            const next = !v
+            localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+            return next
+          })
+        }
       />
 
       {/* Main content */}

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App'
 import { initTheme } from './store/themeStore'
 import { initLocale, syncLocaleFromServer } from './i18n'
+import './fonts.css'
 import './index.css'
 
 initTheme()

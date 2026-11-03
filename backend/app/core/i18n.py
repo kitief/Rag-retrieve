@@ -153,8 +153,8 @@ MESSAGES: Final[dict[str, dict[str, str]]] = {
         "zh": "文档不存在。",
     },
     "doc.too_large": {
-        "en": "File size exceeds maximum allowed limit (2GB).",
-        "zh": "文件大小超出上限（2GB）。",
+        "en": "File size exceeds the maximum allowed limit ({size}).",
+        "zh": "文件大小超出上限（{size}）。",
     },
     "doc.unsupported_type": {
         "en": (

@@ -70,7 +70,7 @@ export const useDeleteChat = () => {
         queryClient.removeQueries({ queryKey: ['messages', chatId] })
         queryClient.removeQueries({ queryKey: ['documents', chatId] })
         queryClient.removeQueries({ queryKey: ['notes', chatId] })
-        queryClient.removeQueries({ queryKey: ['remedial-notes', chatId] })
+        queryClient.removeQueries({ queryKey: ['remedialNotes', chatId] })
       }
       queryClient.invalidateQueries({ queryKey: ['chats'] })
     },

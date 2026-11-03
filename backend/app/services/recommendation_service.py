@@ -9,6 +9,7 @@ from uuid import UUID
 from langgraph.graph import END, StateGraph
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import HTTPException, status
 
 from app.models.chat import Chat
 from app.models.quiz import Quiz
@@ -120,7 +121,11 @@ async def get_recommendations(
     cid = UUID(str(chat_id)) if not isinstance(chat_id, UUID) else chat_id
     # Load chat title for context
     chat = await db.get(Chat, cid)
-    chat_title = chat.title if chat else "your course"
+    if chat is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=t("chat.not_found"))
+    if str(chat.user_id) != str(user_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=t("chat.access_denied"))
+    chat_title = chat.title
 
     # Load last 5 quiz results
     quiz_result = await db.execute(

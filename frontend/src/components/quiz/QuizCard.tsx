@@ -19,6 +19,18 @@ export function QuizCard({ quiz, onSubmit, isSubmitting }: QuizCardProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, string>>({})
 
+  if (quiz.questions.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-card rounded-xl p-6 text-center"
+      >
+        <p className="text-sm text-muted-foreground">{t('quiz.noQuestions')}</p>
+      </motion.div>
+    )
+  }
+
   const question: MCQQuestion = quiz.questions[currentIndex]
   const progress = ((currentIndex + 1) / quiz.questions.length) * 100
   const isLast = currentIndex === quiz.questions.length - 1
@@ -155,9 +167,9 @@ export function QuizResults({
         <div>
           <p className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('quiz.needsReview')}</p>
           <div className="flex flex-wrap gap-1.5">
-            {result.weak_topics.slice(0, 5).map((t, i) => (
-              <Badge key={i} className="text-[10px] bg-warning/15 text-warning border-warning/30">
-                {t.length > 40 ? t.slice(0, 40) + '…' : t}
+            {result.weak_topics.slice(0, 5).map((topic, i) => (
+              <Badge key={`${topic}-${i}`} className="text-[10px] bg-warning/15 text-warning border-warning/30">
+                {topic.length > 40 ? topic.slice(0, 40) + '…' : topic}
               </Badge>
             ))}
           </div>

@@ -60,10 +60,18 @@ def _count_tokens(text: str) -> int:
 def _split_into_sentences(text: str) -> list[str]:
     """
     Naïve sentence splitter. Falls back gracefully on edge cases.
-    Splits on '. ', '! ', '? ', '\n\n' boundaries.
+    Splits after sentence-ending punctuation — English ".", "!", "?" and
+    Chinese "。", "！", "？", "；" — and on blank-line boundaries.
+
+    Chinese punctuation is followed directly by the next sentence (no space),
+    so the split is zero-width: the punctuation stays attached to its sentence
+    instead of being consumed by the delimiter.
     """
-    # Split on sentence-ending punctuation followed by whitespace or newline
-    parts = re.split(r"(?<=[.!?])\s+|\n{2,}", text)
+    # Split after sentence-ending punctuation, or on blank-line boundaries.
+    # English punctuation requires trailing whitespace (so "3.14" / "e.g." are
+    # not split); Chinese punctuation is zero-width because the next sentence
+    # follows the mark directly with no space.
+    parts = re.split(r"(?<=[.!?])\s+|(?<=[。！？；])\s*|\n{2,}", text)
     return [p.strip() for p in parts if p.strip()]
 
 

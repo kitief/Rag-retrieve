@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean
 from sqlalchemy import Uuid
 from sqlalchemy.orm import relationship
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database import Base
 
 class Chat(Base):
@@ -11,8 +11,8 @@ class Chat(Base):
     user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False)
     title = Column(String, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="chats")
     messages = relationship("Message", back_populates="chat", cascade="all, delete-orphan")

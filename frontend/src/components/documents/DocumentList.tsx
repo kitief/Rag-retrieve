@@ -141,8 +141,8 @@ interface DocumentListProps {
 export function DocumentList({ chatId }: DocumentListProps) {
   const t = useT()
   const { data, isLoading, isError } = useDocuments(chatId, {
-    refetchInterval: (data: any) =>
-      data?.documents?.some((d: any) => d.status === 'processing') ? 3000 : false,
+    refetchInterval: (query) =>
+      query.state.data?.documents?.some((d) => d.status === 'processing') ? 3000 : false,
   })
   const deleteDoc = useDeleteDocument(chatId)
   const { toast } = useToast()

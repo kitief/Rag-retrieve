@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
+import type { FileRejection } from 'react-dropzone'
 import { motion } from 'framer-motion'
 import { UploadCloud, FileText, Presentation, FileType2, FileCode2 } from 'lucide-react'
 import { useUploadDocument } from '@/api/documents'
@@ -73,9 +74,9 @@ export function DropZone({ chatId }: DropZoneProps) {
   const { toast } = useToast()
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[], rejectedFiles: any[]) => {
+    async (acceptedFiles: File[], rejectedFiles: FileRejection[]) => {
       const validFiles: File[] = [...acceptedFiles]
-      const actualRejected: any[] = []
+      const actualRejected: FileRejection[] = []
 
       // If browser MIME detection failed for valid extensions like .ppt, rescue them
       for (const rej of rejectedFiles) {
@@ -118,9 +119,20 @@ export function DropZone({ chatId }: DropZoneProps) {
     maxSize: 2 * 1024 * 1024 * 1024,
   })
 
+  // react-dropzone's root props include the HTML drag handlers (`onDrag`,
+  // `onDragStart`, `onDragEnd`) and `onAnimationStart`, which collide with
+  // framer-motion's pan-gesture/animation handlers of the same name on
+  // motion.div. react-dropzone never sets them (it relies on onDragEnter/
+  // onDragOver/onDragLeave/onDrop), so strip them.
+  const { onDrag, onDragStart, onDragEnd, onAnimationStart, ...rootProps } = getRootProps()
+  void onDrag
+  void onDragStart
+  void onDragEnd
+  void onAnimationStart
+
   return (
     <motion.div
-      {...(getRootProps() as any)}
+      {...rootProps}
       whileHover={{ scale: 1.01 }}
       className={`border-2 border-dashed rounded-xl p-3 cursor-pointer transition-colors duration-200 ${
         isDragActive

@@ -2,7 +2,7 @@ from sqlalchemy import Column, DateTime, ForeignKey, Text
 from sqlalchemy import Uuid
 from sqlalchemy.orm import relationship
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database import Base
 
 class UserMemory(Base):
@@ -11,7 +11,7 @@ class UserMemory(Base):
     user_id = Column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=False)
     memory_text = Column(Text, nullable=False)
     source_chat_id = Column(Uuid(as_uuid=True), ForeignKey("chats.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="memories")
     source_chat = relationship("Chat", back_populates="memories")

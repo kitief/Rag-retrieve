@@ -309,6 +309,7 @@ export const en = {
   'quiz.planFailed': 'Could not generate a study plan.',
   'quiz.planRegenerate': 'Regenerate',
   'quiz.planClose': 'Close',
+  'quiz.noQuestions': 'This quiz has no questions yet.',
 
   // ── Quiz history page ─────────────────────────────────────────────────────
   'quizHistory.title': 'Quiz History',
@@ -674,6 +675,7 @@ export const zh: Record<MessageKey, string> = {
   'quiz.planFailed': '生成学习计划失败。',
   'quiz.planRegenerate': '重新生成',
   'quiz.planClose': '关闭',
+  'quiz.noQuestions': '这份测验暂时没有题目。',
 
   // ── Quiz history page ─────────────────────────────────────────────────────
   'quizHistory.title': '测验记录',

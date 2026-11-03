@@ -2,7 +2,7 @@
 
 > 把课件、讲义、教材变成能对话的私人助教
 >
-> **版本 `alpha-v2.2`** · 仓库地址：<https://github.com/kitief/Rag-retrieve>
+> **版本 `beta-v1.0`** · 仓库地址：<https://github.com/kitief/Rag-retrieve>
 >
 > 简体中文 | [English](README.en.md)
 
@@ -46,7 +46,7 @@ RagVault 是一个装在 Windows 上的学习工具。你把 PDF 课件、PPT �
 
 ### 装
 
-1. 从 [Releases](https://github.com/kitief/Rag-retrieve/releases/tag/alpha-v2.2) 下载 `RagVault_2.2.0_x64-setup.exe`（仓库是私有的，需要登录 GitHub）。
+1. 从 [Releases](https://github.com/kitief/Rag-retrieve/releases/tag/beta-v1.0) 下载 `RagVault_1.0.0_x64-setup.exe`（仓库是私有的，需要登录 GitHub）。
 2. 双击安装。装到 `%LOCALAPPDATA%\RagVault`，**不需要管理员权限**。
 3. 安装包没有代码签名，Windows 会弹「已保护你的电脑」——点「更多信息」→「仍要运行」。也可以先对安装包右键 → 属性 → 勾选「解除锁定」。
 
@@ -263,7 +263,7 @@ RagVault 是一个装在 Windows 上的学习工具。你把 PDF 课件、PPT �
 | --- | --- |
 | 操作系统 | Windows 10 1809+ / Windows 11（需要 WebView2） |
 | 内存 | 8 GB 起 |
-| 磁盘 | 1.5 GB 空闲（安装包 171 MiB，安装后约 419 MiB） |
+| 磁盘 | 1.5 GB 空闲（安装包 168 MiB，安装后约 402 MiB） |
 | 工具链 | Python 3.11、Node 20+、Rust MSVC（打包才需要） |
 
 ### 首次准备
@@ -309,7 +309,7 @@ API 在 `http://127.0.0.1:8000`，Vite 在 `http://127.0.0.1:3000`，数据落�
 # 1) 前端（必须先做：spec 会把 frontend\dist 打进冻结产物）
 cd frontend; npm run build
 
-# 2) 冻结后端（约 5 分钟，产物约 410 MB）
+# 2) 冻结后端（约 5 分钟，产物约 397 MB）
 .venv-desktop\Scripts\pyinstaller backend\ragvault-backend.spec
 
 # 3) 打安装包（首次需联网下载 NSIS）
@@ -519,8 +519,9 @@ Remove-Item -Recurse "$env:APPDATA\com.ragvault.desktop"
 
 MIT License，详见 [LICENSE](LICENSE)。
 
-本版本（`alpha-v2.2`）衍生自 Meet Paladiya 的原始
+本版本（`beta-v1.0`）衍生自 Meet Paladiya 的原始
 [RagVault](https://github.com/Meet-paladiya/RagVault) 项目。上游提交历史被有意丢弃；
 本仓库从单个 `alpha-v1.1` 提交开始，`alpha-v1.2` 增加了设置对话框，
 `alpha-v2.2` 增加了 Windows 桌面版（Tauri v2 壳 + PyInstaller 后端，详见
-[docs/desktop-packaging.md](docs/desktop-packaging.md)）。
+[docs/desktop-packaging.md](docs/desktop-packaging.md)），`beta-v1.0` 补上了学习计划、
+按安装随机生成的 JWT 密钥，并把 README 改写成面向使用者的样子。

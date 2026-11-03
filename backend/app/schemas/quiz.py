@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from uuid import UUID
 from typing import List, Dict, Optional
@@ -16,7 +16,7 @@ class MCQQuestion(BaseModel):
 
 class QuizGenerateRequest(BaseModel):
     topic: str
-    num_questions: int = 5
+    num_questions: int = Field(default=5, ge=1, le=50)
 
 class QuizResponse(BaseModel):
     id: UUID

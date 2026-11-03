@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Sparkles, RotateCw, Copy, Check, FileText, Search, Download
@@ -23,17 +23,23 @@ export function NotesCardsView({ notes, onRegenerate, onDownloadPdf, isRegenerat
   const t = useT()
   const [search, setSearch] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const copiedTimer = useRef<number | undefined>(undefined)
   const { toast } = useToast()
 
-  const filteredCards = notes.cards.filter((card) => {
-    const matchesSearch =
-      card.topic.toLowerCase().includes(search.toLowerCase()) ||
-      card.summary.toLowerCase().includes(search.toLowerCase()) ||
-      card.key_points.some((kp) => kp.toLowerCase().includes(search.toLowerCase()))
-    return matchesSearch
-  })
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), [])
 
-  const handleCopyCard = (card: NoteCard) => {
+  const filteredCards = useMemo(() => {
+    const query = search.toLowerCase()
+    return notes.cards.filter((card) => {
+      return (
+        card.topic.toLowerCase().includes(query) ||
+        card.summary.toLowerCase().includes(query) ||
+        card.key_points.some((kp) => kp.toLowerCase().includes(query))
+      )
+    })
+  }, [notes, search])
+
+  const handleCopyCard = async (card: NoteCard) => {
     const text = t('notes.copyTemplate', {
       topic: card.topic,
       summary: card.summary,
@@ -41,10 +47,15 @@ export function NotesCardsView({ notes, onRegenerate, onDownloadPdf, isRegenerat
       source: card.source ?? t('common.document'),
       page: card.page ?? 1,
     })
-    navigator.clipboard.writeText(text)
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      // ignore clipboard failures
+    }
     setCopiedId(card.id)
     toast({ description: t('notes.copied') })
-    setTimeout(() => setCopiedId(null), 2000)
+    window.clearTimeout(copiedTimer.current)
+    copiedTimer.current = window.setTimeout(() => setCopiedId(null), 2000)
   }
 
   return (

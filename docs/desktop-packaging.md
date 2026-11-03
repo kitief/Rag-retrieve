@@ -712,7 +712,33 @@ Start-Process "$env:LOCALAPPDATA\RagVault\uninstall.exe" -ArgumentList '/S' -Wai
 
 > **未签名安装包的首次运行提示**：Windows 会弹「Windows 已保护你的电脑」。点「更多信息」→「仍要运行」即可；或对安装包右键 → 属性 → 勾选「解除锁定」。这段说明应写进发布说明，否则答辩现场容易被卡住。
 
-**M4 验收记录 —— 2.2.0（2026-11-02，当前版本）**
+**M4 验收记录 —— 1.0.0（beta-v1.0，2026-11-03，当前版本）**
+
+| 项 | 结果 |
+| --- | --- |
+| 前端构建 | `vite build` → `dist/assets/index-CNswuj_c.js`（1,575.70 kB）、`index-PhXkeH7t.css`（43.50 kB）、`core-BUhCcD2K.js`、`theme-boot.js`、`fonts/` 4 个 woff2，**`dist` 只有 9 个文件**（清空过） |
+| 冻结后端 | `[spec] trimmed bundle: 153 binaries, 1778 data files`，`dist/ragvault-backend` **1932 个文件 / 415,948,821 B（397 MB）** |
+| release 壳编译 | `Finished \`release\` profile [optimized] target(s) in 1m 12s`，`ragvault-desktop.exe`（ProductVersion 1.0.0） |
+| NSIS 打包 | `RagVault_1.0.0_x64-setup.exe` **175,799,397 字节（167.66 MiB）**，sha256 `3ddb264d…b6213` |
+| 冻结产物自测 | `--port 8791` 起 exe：`{"status":"ok","version":"1.0.0"}`、`.jwt_secret` 自动生成（64 字符）、SPA 引用 `index-CNswuj_c.js`、扫描件 5 页 OCR 置信度 0.987 / 6876 字符 / 8 chunk、md/csv/docx/doc 全 `processed` → `FROZEN SMOKE OK` |
+| 重启复用密钥 | 停掉 exe 再起，`.jwt_secret` 不变，重启前签发的 token 调 `/api/auth/me` 仍 200 → `JWT RESTART OK` |
+| 静默安装 | `/S` 从 ASCII 路径 → `%LOCALAPPDATA%\RagVault`，**21.9 秒**，**1934 个文件 / 421,251,472 B（401.74 MiB）** |
+| 稳定端口 | 首启后 `<数据目录>\app-port.txt` 内容 `47823`，后端监听 47823 |
+| 本地 token 闸门 | 无 `X-RagVault-Token` 调 `/api` → **401**；从 `<meta name="ragvault-token">` 取到 32 位 token 后正常 |
+| 安装后前端 bundle | `assets/index-CNswuj_c.js`，`theme-boot.js` 在 `<head>` 内，**且只有这一组资产** |
+| 安装后 OCR | 7 页扫描件 → `ocr_pages=5`、`mean_confidence=0.987`、`text_chars=6876`、8 个 chunk |
+| 安装后学习计划 | `GET /api/chats/{id}/recommendations` → 200，174 字符 Markdown → `PLAN ENDPOINT OK` |
+| 静默卸载 | `uninstall.exe /S` → `%LOCALAPPDATA%\RagVault` 完全移除 |
+| 发布资产校验 | 走认证 API 下载，sha256 与本地一致 |
+
+> 1.0.0 比 2.2.0 **小了 3,595,938 字节（约 3.43 MiB）**，尽管功能变多了：
+> 冻结产物少了 14,142,672 B。原因是 `vite build` 之前从不清空 `dist/`，
+> 16 个历史 `index-*.js` 和 5 个 `index-*.css`（约 16 MB）一直被 spec 整个
+> 目录打进产物。已在 `frontend/vite.config.ts` 里用一个 `buildStart` 插件清空
+> `dist` 修掉 —— **不能用 `build.emptyOutDir`**，它走的 `fs.rmSync()` 在本机
+> 静默失败（不报错也不删文件），必须用 `unlinkSync` / `rmdirSync` 手写递归删除。
+
+**M4 验收记录 —— 2.2.0（2026-11-02，历史存档）**
 
 | 项 | 结果 |
 | --- | --- |

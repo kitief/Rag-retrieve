@@ -1,4 +1,5 @@
 """Generate page-complete study notes and export them as readable PDFs."""
+import asyncio
 import json
 import logging
 import re
@@ -293,19 +294,41 @@ async def generate_notes(db: AsyncSession, chat_id: str) -> Note:
             page["text"] += f"\n{chunk['text']}"
 
         page_items = list(pages.values())
-        # Keep prompts bounded while ensuring every page is processed.
-        for start in range(0, len(page_items), 3):
-            page_batch = page_items[start:start + 3]
+
+        # Summarize every page, but keep each prompt bounded to 3 pages.
+        # Process batches concurrently (not serially) so a 60-page document
+        # doesn't incur 20 round-trips back-to-back.
+        async def _summarize_batch(page_batch: list[dict[str, Any]]) -> list[dict[str, Any]]:
             prompt = _build_page_summary_prompt(filename, page_batch)
             logger.info("[NOTES] Summarizing pages %s from %s", [p["page"] for p in page_batch], filename)
             try:
                 raw = await _invoke_llm(prompt)
                 parsed = _parse_and_repair_json(raw)
-                all_cards.extend(_normalise_cards(parsed, filename))
+                return _normalise_cards(parsed, filename)
             except Exception as exc:
                 logger.warning("[NOTES] Page summary error for %s: %s", filename, exc)
+                # Fall back to a deterministic card per page in this batch.
+                fallback: list[dict[str, Any]] = []
+                for page in page_batch:
+                    fallback.append({
+                        "id": f"card_fb_{uuid4().hex[:8]}",
+                        "topic": t("notes.fallback_topic", page=page["page"]),
+                        "summary": page["text"][:1200].strip(),
+                        "key_points": [line.strip() for line in page["text"].splitlines() if line.strip()][:8],
+                        "source": filename,
+                        "page": page["page"],
+                        "tag": "Summary",
+                    })
+                return fallback
 
-            summarized_pages = {int(card["page"]) for card in all_cards if card["source"] == filename}
+        batches = [page_items[start:start + 3] for start in range(0, len(page_items), 3)]
+        results = await asyncio.gather(*(_summarize_batch(batch) for batch in batches))
+        for batch_cards in results:
+            all_cards.extend(batch_cards)
+
+        # Ensure no page was dropped silently by the LLM.
+        summarized_pages = {int(card["page"]) for card in all_cards if card["source"] == filename}
+        for page_batch in batches:
             for page in page_batch:
                 if page["page"] not in summarized_pages:
                     all_cards.append({

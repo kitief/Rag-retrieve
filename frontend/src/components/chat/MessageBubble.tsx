@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import type { Components } from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { BookOpen, ChevronDown, ChevronUp, User, Brain, Copy, Check } from 'lucide-react'
@@ -35,22 +37,50 @@ function formatMessageTime(
   return format(date, locale.code.startsWith('zh') ? 'M月d日 HH:mm' : 'MMM d, h:mm a')
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message }: MessageBubbleProps) {
   const t = useT()
   const dateLocale = useDateLocale()
   const isUser = message.role === 'user'
   const [citationsOpen, setCitationsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const copiedTimer = useRef<number | undefined>(undefined)
   const citations: Citation[] = message.citations ?? []
+
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), [])
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(message.content)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      window.clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 2000)
     } catch {
       // ignore
     }
+  }
+
+  const components: Components = {
+    code({ node, className, children, ...props }) {
+      const match = /language-(\w+)/.exec(className || '')
+      const lang = match ? match[1] : null
+      return lang ? (
+        <SyntaxHighlighter
+          style={oneDark as { [key: string]: CSSProperties }}
+          language={lang}
+          PreTag="div"
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
+      ) : (
+        <code className="bg-white/10 px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
+          {children}
+        </code>
+      )
+    },
+    p({ children }) { return <p className="mb-2 last:mb-0">{children}</p> },
+    ul({ children }) { return <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul> },
+    ol({ children }) { return <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol> },
+    h3({ children }) { return <h3 className="font-semibold text-sm mb-1">{children}</h3> },
   }
 
 
@@ -82,27 +112,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ node, inline, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '')
-                  return !inline && match ? (
-                    <SyntaxHighlighter style={oneDark} language={match[1]} PreTag="div" {...props}>
-                      {String(children).replace(/\n$/, '')}
-                    </SyntaxHighlighter>
-                  ) : (
-                    <code className="bg-white/10 px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
-                      {children}
-                    </code>
-                  )
-                },
-                p({ children }) { return <p className="mb-2 last:mb-0">{children}</p> },
-                ul({ children }) { return <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul> },
-                ol({ children }) { return <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol> },
-                h3({ children }) { return <h3 className="font-semibold text-sm mb-1">{children}</h3> },
-              }}
-            >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
               {message.content}
             </ReactMarkdown>
           )}
@@ -134,7 +144,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 >
                   {citations.map((c, i) => (
                     <Badge
-                      key={i}
+                      key={`${c.source}-${c.page}-${i}`}
                       variant="secondary"
                       className="text-[10px] bg-primary/15 text-primary border border-primary/30 px-2 py-0.5"
                     >
@@ -168,7 +178,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       </div>
     </motion.div>
   )
-}
+})
 
 export function StreamingBubble({ content }: { content: string }) {
   return (

@@ -12,7 +12,7 @@ This is a self-hosted deployment: the database is the trust boundary, and the
 API never returns a stored key — only a masked hint.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, String, Text
 
@@ -28,7 +28,7 @@ class LLMApiKey(Base):
     provider = Column(String, nullable=False, default="custom")
     label = Column(String, nullable=False, default="")
     value = Column(Text, nullable=False, default="")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 __all__ = ["LLMApiKey"]

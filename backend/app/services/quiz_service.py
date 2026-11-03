@@ -317,8 +317,19 @@ async def submit_quiz(
     for q in questions:
         qid = q.get("id", "")
         chosen = answers.get(qid)
-        correct_id = q.get("correct_option_id") or q.get("answer")
         opts = q.get("options", [])
+        # Normalise the correct answer to an option id ("a"–"d"). New data stores
+        # correct_option_id directly; legacy data stored only a 0-based int
+        # "answer". Comparing an int against the letter id never matched, so old
+        # quizzes were graded entirely wrong. Map the int index onto the option id.
+        correct_id = q.get("correct_option_id")
+        if not correct_id:
+            raw_ans = q.get("answer")
+            if isinstance(raw_ans, int) and 0 <= raw_ans < len(opts):
+                opt = opts[raw_ans]
+                correct_id = opt.get("id") if isinstance(opt, dict) else None
+            if not correct_id:
+                correct_id = raw_ans
 
         user_opt_text = next((str(opt.get("text", "")).strip() for opt in opts if isinstance(opt, dict) and opt.get("id") == chosen), "Not Answered")
         correct_opt_text = next((str(opt.get("text", "")).strip() for opt in opts if isinstance(opt, dict) and opt.get("id") == correct_id), "Unknown")

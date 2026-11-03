@@ -21,6 +21,11 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
+# A bcrypt hash of a throwaway string. Compared against on login when the
+# email is unknown, so the response time is indistinguishable from a real
+# password-mismatch and cannot be used to enumerate registered emails.
+_DUMMY_PASSWORD_HASH = hash_password("ragvault-dummy-password-for-timing")
+
 
 async def register_user(db: AsyncSession, name: str, email: str, password: str) -> User:
     """
@@ -58,6 +63,9 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     user = result.scalar_one_or_none()
 
     if not user:
+        # Run the same bcrypt work as a real login before rejecting, so the
+        # timing of an unknown-email response matches a wrong-password response.
+        await asyncio.to_thread(verify_password, password, _DUMMY_PASSWORD_HASH)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=t("auth.invalid_credentials"),

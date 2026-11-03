@@ -3,6 +3,18 @@ import * as THREE from 'three'
 import { useThemeStore } from '@/store/themeStore'
 import { themes } from '@/theme'
 
+function disposeMaterial(material: THREE.Material | THREE.Material[]) {
+  const list = Array.isArray(material) ? material : [material]
+  for (const m of list) {
+    for (const value of Object.values(m)) {
+      if (value instanceof THREE.Texture) {
+        value.dispose()
+      }
+    }
+    m.dispose()
+  }
+}
+
 interface KnowledgeNetworkCanvasProps {
   className?: string
 }
@@ -201,7 +213,25 @@ export function KnowledgeNetworkCanvas({ className = '' }: KnowledgeNetworkCanva
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
       }
+
+      // Release every geometry, material and texture held by the scene. The
+      // renderer.dispose() below only frees the WebGL context; without this,
+      // the shared nodeGeometry/nodeMaterial and all per-mesh GPU buffers leak
+      // every time the theme changes and this effect re-runs.
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh || object instanceof THREE.Points || object instanceof THREE.Line) {
+          object.geometry?.dispose()
+        }
+        const material = (object as THREE.Mesh).material
+        if (Array.isArray(material)) {
+          material.forEach((m) => disposeMaterial(m))
+        } else if (material) {
+          disposeMaterial(material)
+        }
+      })
+
       renderer.dispose()
+      renderer.forceContextLoss()
     }
   }, [theme])
 

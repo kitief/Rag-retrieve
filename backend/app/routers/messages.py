@@ -106,8 +106,12 @@ async def _save_messages(
     assistant_content: str,
     citations: list[dict],
     user_asked_at: datetime | None = None,
-) -> None:
-    """Persist user question and assistant answer to the database using a fresh session."""
+) -> Message | None:
+    """Persist user question and assistant answer to the database using a fresh session.
+
+    Returns the persisted assistant Message so callers can build a response
+    without re-querying across sessions (SQLite WAL snapshots may not expose the
+    newly committed row to an already-open session, causing scalar_one misses)."""
     from app.database import AsyncSessionLocal
 
     cid = _to_uuid(chat_id)
@@ -138,9 +142,12 @@ async def _save_messages(
             session.add(user_msg)
             session.add(assistant_msg)
             await session.commit()
+            await session.refresh(assistant_msg)
             logger.info("[MESSAGES] Saved user question (%s) and assistant answer (%s) for chat %s", asked_time, completed_time, chat_id)
+            return assistant_msg
         except Exception as exc:
             logger.error("[MESSAGES] Failed to save messages to DB: %s", exc)
+            return None
 
 
 @router.post("/{chat_id}/messages", response_model=None)
@@ -217,12 +224,16 @@ async def send_message(
     else:
         # ── Non-streaming path ────────────────────────────────────────────────
         result = await run_rag(payload.content, chat_id, chat_history)
-        await _save_messages(
+        # Return the assistant message we just persisted (avoid re-querying across
+        # sessions: SQLite WAL snapshots may not expose the new row to this session).
+        assistant_msg = await _save_messages(
             chat_id, payload.content, result["answer"], result["citations"], asked_at
         )
         if should_auto_title:
             asyncio.create_task(_auto_title_chat(chat_id, payload.content, result["answer"]))
-        # Return the assistant message
+        if assistant_msg is not None:
+            return MessageResponse.model_validate(assistant_msg)
+        # Fallback: re-query within this session as a last resort.
         cid = _to_uuid(chat_id)
         db_result = await db.execute(
             select(Message)

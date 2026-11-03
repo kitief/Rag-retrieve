@@ -94,20 +94,21 @@ def _derive_search_query(question: str, chat_history: list[dict[str, str]]) -> s
     return question
 
 
-def embed_question_node(state: RAGState) -> RAGState:
+async def embed_question_node(state: RAGState) -> RAGState:
     """Node 1: Embed the user question using the fast ONNX embedding model."""
     logger.debug("[RAG] Embedding question")
     search_query = _derive_search_query(state["question"], state.get("chat_history", []))
-    state["query_embedding"] = embed_single(search_query)
+    state["query_embedding"] = await asyncio.to_thread(embed_single, search_query)
     return state
 
 
-def retrieve_chunks_node(state: RAGState) -> RAGState:
+async def retrieve_chunks_node(state: RAGState) -> RAGState:
     """Node 2: Retrieve top-k similar chunks from the chat's ChromaDB collection within max_distance."""
     from app.config import get_settings
     cfg = get_settings()
     logger.debug("[RAG] Retrieving chunks (top_k=%d, max_dist=%.2f)", state["top_k"], cfg.rag_max_distance)
-    chunks = query_collection(
+    chunks = await asyncio.to_thread(
+        query_collection,
         chat_id=state["chat_id"],
         query_embedding=state["query_embedding"],
         k=state["top_k"],
@@ -118,14 +119,31 @@ def retrieve_chunks_node(state: RAGState) -> RAGState:
     return state
 
 
-def assemble_context_node(state: RAGState) -> RAGState:
-    """Node 3: Format retrieved chunks into a numbered context block."""
+def _assemble_context(chunks: list[dict[str, Any]]) -> str:
+    """Format retrieved chunks into a numbered context block (shared by both paths)."""
     parts: list[str] = []
-    for i, chunk in enumerate(state["retrieved_chunks"], start=1):
+    for i, chunk in enumerate(chunks, start=1):
         parts.append(
             f"[{i}] Source: {chunk['source']} | Page: {chunk['page']}\n{chunk['text']}"
         )
-    state["context"] = "\n\n---\n\n".join(parts) if parts else ""
+    return "\n\n---\n\n".join(parts) if parts else ""
+
+
+def _dedupe_citations(chunks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Build a deduplicated citation list from chunk metadata (shared by both paths)."""
+    seen: set[tuple[str, int]] = set()
+    citations: list[dict[str, str]] = []
+    for chunk in chunks:
+        key = (chunk["source"], chunk["page"])
+        if key not in seen:
+            seen.add(key)
+            citations.append({"source": chunk["source"], "page": chunk["page"]})
+    return citations
+
+
+def assemble_context_node(state: RAGState) -> RAGState:
+    """Node 3: Format retrieved chunks into a numbered context block."""
+    state["context"] = _assemble_context(state["retrieved_chunks"])
     return state
 
 
@@ -216,18 +234,7 @@ def extract_citations_node(state: RAGState) -> RAGState:
     Node 5: Build a deduplicated citation list from the retrieved chunk metadata.
     Citations are derived from metadata, NOT from LLM hallucination.
     """
-    if not state.get("retrieved_chunks"):
-        state["citations"] = []
-        return state
-
-    seen: set[tuple[str, int]] = set()
-    citations: list[dict[str, Any]] = []
-    for chunk in state["retrieved_chunks"]:
-        key = (chunk["source"], chunk["page"])
-        if key not in seen:
-            seen.add(key)
-            citations.append({"source": chunk["source"], "page": chunk["page"]})
-    state["citations"] = citations
+    state["citations"] = _dedupe_citations(state.get("retrieved_chunks") or [])
     return state
 
 
@@ -320,14 +327,21 @@ async def stream_rag(
         return
 
     # ── Steps 1-2: embed → retrieve with strict max_distance threshold ───────
+    # Both embed_single (FastEmbed ONNX) and query_collection (ChromaDB) are
+    # synchronous CPU/disk bound; offload them so a slow embed or a large
+    # collection does not stall the event loop for every other request.
     search_query = _derive_search_query(question, chat_history)
-    query_embedding = embed_single(search_query)
-    retrieved_chunks = query_collection(
-        chat_id=chat_id,
-        query_embedding=query_embedding,
-        k=cfg.top_k,
-        max_distance=cfg.rag_max_distance,
-    )
+
+    def _embed_and_retrieve():
+        embedding = embed_single(search_query)
+        return query_collection(
+            chat_id=chat_id,
+            query_embedding=embedding,
+            k=cfg.top_k,
+            max_distance=cfg.rag_max_distance,
+        )
+
+    retrieved_chunks = await asyncio.to_thread(_embed_and_retrieve)
 
     # ── Guard: If no relevant chunks meet the similarity threshold ────────────
     if not retrieved_chunks:
@@ -336,13 +350,8 @@ async def stream_rag(
         yield "data: [DONE]\n\n"
         return
 
-    # ── Step 3: Build context block ───────────────────────────────────────────
-    parts: list[str] = []
-    for i, chunk in enumerate(retrieved_chunks, start=1):
-        parts.append(
-            f"[{i}] Source: {chunk['source']} | Page: {chunk['page']}\n{chunk['text']}"
-        )
-    context = "\n\n---\n\n".join(parts)
+    # ── Step 3: Build context block (shared helper, same as graph node) ─────
+    context = _assemble_context(retrieved_chunks)
 
     # Build prompt messages (shared with the non-streaming graph node)
     messages = _build_prompt(
@@ -367,15 +376,9 @@ async def stream_rag(
     # ── Step 5: Emit deduplicated citations as metadata event ─────────────────
     complete_text = "".join(full_response_text).lower()
     if any(marker in complete_text for marker in _not_found_markers()):
-        citations: list[dict[str, Any]] = []
+        citations: list[dict[str, str]] = []
     else:
-        seen: set[tuple[str, int]] = set()
-        citations = []
-        for chunk in retrieved_chunks:
-            key = (chunk["source"], chunk["page"])
-            if key not in seen:
-                seen.add(key)
-                citations.append({"source": chunk["source"], "page": chunk["page"]})
+        citations = _dedupe_citations(retrieved_chunks)
 
     yield f"data: {json.dumps({'citations': citations})}\n\n"
     yield "data: [DONE]\n\n"

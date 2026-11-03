@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useAuthStore } from '@/store/authStore'
 import { activeLanguage } from '@/i18n'
 import { localAuthHeaders } from '@/lib/desktop'
+import type { AuthTokens } from '@/types'
 
 const api = axios.create({
   baseURL: '/api',
@@ -25,6 +26,33 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Shared in-flight refresh: concurrent 401s reuse one request instead of
+// each firing its own, which would race and could drop or overwrite tokens.
+let refreshPromise: Promise<AuthTokens> | null = null
+
+async function refreshTokens(): Promise<AuthTokens> {
+  const tokens = useAuthStore.getState().tokens
+  if (!tokens?.refresh_token) {
+    throw new Error('No refresh token')
+  }
+
+  // Call refresh endpoint directly with axios to avoid loop
+  const res = await axios.post(
+    '/api/auth/refresh',
+    { refresh_token: tokens.refresh_token },
+    {
+      headers: {
+        'X-App-Language': activeLanguage(),
+        ...localAuthHeaders(),
+      },
+    },
+  )
+
+  const newTokens: AuthTokens = res.data
+  useAuthStore.getState().updateTokens(newTokens)
+  return newTokens
+}
+
 // Response interceptor: auto-refresh on 401
 api.interceptors.response.use(
   (res) => res,
@@ -34,32 +62,15 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
       try {
-        const tokens = useAuthStore.getState().tokens
-        if (!tokens?.refresh_token) {
-          throw new Error('No refresh token')
-        }
-
-        // Call refresh endpoint directly with axios to avoid loop
-        const res = await axios.post(
-          '/api/auth/refresh',
-          { refresh_token: tokens.refresh_token },
-          {
-            headers: {
-              'X-App-Language': activeLanguage(),
-              ...localAuthHeaders(),
-            },
-          },
-        )
-
-        const newTokens = res.data
-        useAuthStore.getState().updateTokens(newTokens)
-
+        const newTokens = await (refreshPromise ??= refreshTokens())
         originalRequest.headers.Authorization = `Bearer ${newTokens.access_token}`
         return axios(originalRequest)
       } catch (err) {
         useAuthStore.getState().clearAuth()
         window.location.href = '/login'
         return Promise.reject(err)
+      } finally {
+        refreshPromise = null
       }
     }
     return Promise.reject(error)

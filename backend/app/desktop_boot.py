@@ -62,8 +62,6 @@ def _default_data_dir() -> Path:
 
 
 def _default_web_dist() -> Path:
-    if _is_frozen():
-        return _bundle_root() / "frontend" / "dist"
     return _bundle_root() / "frontend" / "dist"
 
 

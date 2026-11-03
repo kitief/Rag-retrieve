@@ -29,8 +29,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = REPO_ROOT / "backend"
 
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# The `app` package lives under backend/, so make it importable before the
+# first import. desktop_boot.main also inserts BACKEND_ROOT, so this is the
+# only path setup done here — no duplicate REPO_ROOT/BACKEND_ROOT inserts.
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -40,6 +43,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    # `app` lives under backend/, so make it importable before the first import.
-    sys.path.insert(0, str(BACKEND_ROOT))
     raise SystemExit(main())

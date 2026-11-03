@@ -32,6 +32,9 @@ const READY_PREFIX: &str = "RAGVAULT_READY port=";
 const WINDOW_LABEL: &str = "main";
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(90);
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(30);
+/// Soft cap for the append-only backend logs; rotated to a single `.1` backup
+/// once they grow past this.
+const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 
 /// Remembers the loopback port this app last bound successfully.
 ///
@@ -236,6 +239,27 @@ fn log_path(app: &tauri::AppHandle) -> PathBuf {
     data_dir(app).join("backend.log")
 }
 
+/// Open a log file for appending, rotating it to a single `.1` backup once it
+/// grows past `MAX_LOG_BYTES`. `backend.log` / `backend.stderr.log` are
+/// written for the lifetime of the backend; without a cap they grow unbounded.
+fn open_log_for_append(path: &Path) -> std::io::Result<std::fs::File> {
+    if let Ok(meta) = std::fs::metadata(path) {
+        if meta.len() > MAX_LOG_BYTES {
+            let file_name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "backend.log".to_string());
+            let rotated = path.with_file_name(format!("{file_name}.1"));
+            let _ = std::fs::remove_file(&rotated);
+            let _ = std::fs::rename(path, &rotated);
+        }
+    }
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+}
+
 /// The port file lives beside the database so it travels with the data dir.
 fn port_path(app: &tauri::AppHandle) -> PathBuf {
     data_dir(app).join(PORT_FILE)
@@ -374,7 +398,8 @@ fn unique_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{stem}-{}{ext}", std::process::id()))
 }
 
-fn launch_backend(app: &tauri::AppHandle, token: &str, port: u16) -> Result<Launch, String> {    let exe = backend_exe(app)?;
+fn launch_backend(app: &tauri::AppHandle, token: &str, port: u16) -> Result<Launch, String> {
+    let exe = backend_exe(app)?;
     let workdir = exe
         .parent()
         .ok_or_else(|| "backend executable has no parent directory".to_string())?
@@ -453,11 +478,7 @@ fn launch_backend(app: &tauri::AppHandle, token: &str, port: u16) -> Result<Laun
     if let Some(parent) = log_file_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let log_file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_file_path)
-        .ok();
+    let log_file = open_log_for_append(&log_file_path).ok();
 
     if let Some(stream) = stdout {
         let tx_out = tx.clone();
@@ -492,11 +513,7 @@ fn launch_backend(app: &tauri::AppHandle, token: &str, port: u16) -> Result<Laun
 
     if let Some(stream) = stderr {
         let err_path = log_file_path.with_file_name("backend.stderr.log");
-        let mut sink = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&err_path)
-            .ok();
+        let mut sink = open_log_for_append(&err_path).ok();
         let tx_err = tx.clone();
         thread::spawn(move || {
             let mut reader = BufReader::new(stream);
@@ -658,24 +675,51 @@ fn wait_for_health(port: u16) -> bool {
     let url = format!("http://127.0.0.1:{port}/health");
 
     while Instant::now() < deadline {
-        // A plain TCP connect is enough: uvicorn only accepts once the routes
-        // are mounted, and pulling in an HTTP client here buys nothing.
-        if std::net::TcpStream::connect_timeout(
-            &format!("127.0.0.1:{port}")
-                .parse()
-                .expect("static socket address parses"),
-            Duration::from_millis(500),
-        )
-        .is_ok()
-        {
-            eprintln!("[shell] backend reachable at {url}");
+        // A TCP connect only proves the socket accepts connections; the server
+        // could still be half-booted and answering nothing. Do a real GET and
+        // require the HTTP status line to contain " 200 " so a stale/erroring
+        // backend never opens the window.
+        if health_request_ok(port) {
+            eprintln!("[shell] backend healthy at {url}");
             return true;
         }
         thread::sleep(Duration::from_millis(200));
     }
 
-    eprintln!("[shell] backend never became reachable at {url}");
+    eprintln!("[shell] backend never became healthy at {url}");
     false
+}
+
+/// Send a minimal `GET /health` over a raw socket and check the status line.
+///
+/// Avoids pulling in an HTTP client dependency: the request is one fixed line
+/// and the response only needs its first line inspected.
+fn health_request_ok(port: u16) -> bool {
+    let addr = match format!("127.0.0.1:{port}").parse() {
+        Ok(addr) => addr,
+        Err(_) => return false,
+    };
+    let mut stream = match std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(500)) {
+        Ok(stream) => stream,
+        Err(_) => return false,
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+
+    let request = format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+
+    // Read until the status line arrives; a healthy backend answers fast, so a
+    // small bounded buffer is enough and there is no need to drain the body.
+    let mut reader = BufReader::new(stream);
+    let mut status_line = String::new();
+    if reader.read_line(&mut status_line).is_err() {
+        return false;
+    }
+    // e.g. "HTTP/1.1 200 OK" — require the 200 status code explicitly.
+    status_line.contains(" 200 ")
 }
 
 fn open_window(app: &tauri::AppHandle, port: u16) -> Result<(), String> {
@@ -850,9 +894,27 @@ fn sanitise_filename(name: &str) -> String {
     let trimmed = cleaned.trim().trim_matches('.').to_string();
     if trimmed.is_empty() {
         "ragvault-download.pdf".to_string()
+    } else if is_reserved_windows_name(&trimmed) {
+        // "CON", "NUL", "COM3", ... cannot be created as file names on Windows;
+        // prefixing keeps the intent visible while making the name writable.
+        format!("_{trimmed}")
     } else {
         trimmed
     }
+}
+
+/// True when `name` (its portion before the first dot) is a Windows reserved
+/// device name: CON, PRN, AUX, NUL, COM1-9, LPT1-9. These are not valid file
+/// names regardless of extension.
+fn is_reserved_windows_name(name: &str) -> bool {
+    let base = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (base.len() == 4
+            && (base.starts_with("COM") || base.starts_with("LPT"))
+            && base
+                .chars()
+                .nth(3)
+                .is_some_and(|c| c.is_ascii_digit() && c != '0'))
 }
 
 #[cfg(test)]
@@ -957,7 +1019,21 @@ fn main() {
                 job: launch.job.take(),
             };
 
-            wait_for_health(port);
+            if !wait_for_health(port) {
+                // The health check is what turns "socket open" into "actually
+                // serving"; a backend that never reports healthy must not open a
+                // blank window. A native dialog cannot be shown from setup
+                // without deadlocking the main thread, so fail the launch: Tauri
+                // surfaces the error and the process exits cleanly.
+                eprintln!(
+                    "[shell] backend on port {port} did not become healthy; aborting launch"
+                );
+                shutdown(&state);
+                return Err(format!(
+                    "The backend did not become healthy on port {port}."
+                )
+                .into());
+            }
             if let Err(err) = open_window(&handle, port) {
                 // The window is the whole product: if it cannot be created the
                 // process is about to exit, so do not leave the backend behind.

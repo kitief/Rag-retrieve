@@ -71,6 +71,11 @@ async def submit_quiz_answers(
     db: AsyncSession = Depends(get_db),
 ) -> QuizResultResponse:
     """Submit answers for a quiz and receive a graded result."""
+    qid = _to_uuid(quiz_id)
+    quiz = (await db.execute(select(Quiz).where(Quiz.id == qid))).scalar_one_or_none()
+    if not quiz:
+        raise HTTPException(status_code=404, detail=t("quiz.not_found"))
+    await _verify_chat_ownership(str(quiz.chat_id), current_user, db)
     result = await submit_quiz(db=db, quiz_id=quiz_id, answers=payload.answers)
     return QuizResultResponse(**result)
 

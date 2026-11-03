@@ -1,9 +1,14 @@
 {
   "identifier": "remote-spa",
-  "description": "The SPA is served over plain HTTP from 127.0.0.1, so WebView2 treats it as a remote origin. This grants that origin the one privileged action it needs: handing generated PDF bytes to the shell so they can be written to disk.",
+  "description": "The SPA is served over plain HTTP from 127.0.0.1, so WebView2 treats it as a remote origin. The port is pinned to the deterministic FALLBACK_PORTS range in src-tauri/src/main.rs. When all four fallback ports are busy the shell falls back to port 0 (OS-assigned); that origin is deliberately NOT granted here, so on the rare ephemeral-port launch the save-download capability is unavailable rather than wildcarding every local port.",
   "windows": ["main"],
   "remote": {
-    "urls": ["http://127.0.0.1:*"]
+    "urls": [
+      "http://127.0.0.1:47823",
+      "http://127.0.0.1:47824",
+      "http://127.0.0.1:47825",
+      "http://127.0.0.1:47826"
+    ]
   },
   "permissions": ["core:default", "allow-save-download", "dialog:default"]
 }

@@ -60,7 +60,7 @@ export function ChatDetailPage() {
       queryClient.removeQueries({ queryKey: ['documents', chatId] })
       queryClient.removeQueries({ queryKey: ['messages', chatId] })
       queryClient.removeQueries({ queryKey: ['notes', chatId] })
-      queryClient.removeQueries({ queryKey: ['remedial-notes', chatId] })
+      queryClient.removeQueries({ queryKey: ['remedialNotes', chatId] })
       navigate('/chats', { replace: true })
     }
   }, [isChatError, chatId, navigate, queryClient])
@@ -187,8 +187,16 @@ export function ChatDetailPage() {
   }, [persistedUserEcho])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent, optimisticUserMessage])
+    // Throttle via rAF so per-token streaming updates collapse into one scroll
+    // per frame, and use instant scrolling while streaming to avoid compounding
+    // smooth-scroll animations that jank and force the view to the bottom.
+    const raf = requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({
+        behavior: isStreaming ? 'auto' : 'smooth',
+      })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [messages, streamingContent, optimisticUserMessage, isStreaming])
 
   useEffect(() => {
     // Wait for the assistant turn as well — a refetch that only brings back the

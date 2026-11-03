@@ -68,6 +68,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="*" element={<Navigate to="/chats" replace />} />
       </Routes>
       <Toaster />
     </BrowserRouter>

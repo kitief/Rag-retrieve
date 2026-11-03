@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Mapping, Sequence
 
@@ -128,6 +129,11 @@ def resolve_llm_config() -> ResolvedLLMConfig:
     model = pick("llm_model", cfg.llm_model) or preset.model
 
     api_key = pick("llm_api_key", cfg.llm_api_key)
+    if not api_key:
+        # Fall back to the provider-specific environment variable declared in the
+        # preset (e.g. DEEPSEEK_API_KEY / OPENAI_API_KEY) so users following the
+        # docs can authenticate without also setting the generic LLM_API_KEY.
+        api_key = (os.environ.get(preset.api_key_env) or "").strip()
 
     return ResolvedLLMConfig(
         provider=provider,

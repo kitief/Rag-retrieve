@@ -41,7 +41,10 @@ param(
     [switch]$Frozen,
     [switch]$Stop,
     [int]$ApiPort = 8000,
-    [int]$WebPort = 3000
+    [int]$WebPort = 3000,
+    # Optional npm registry mirror (e.g. https://registry.npmmirror.com).
+    # Defaults to the official npm registry when empty.
+    [string]$NpmRegistry = ""
 )
 
 $ErrorActionPreference = "Continue"
@@ -53,24 +56,32 @@ if (-not (Test-Path (Join-Path $repo "backend\app\main.py"))) {
     exit 1
 }
 
+# Records the PIDs this script actually started so Stop-DevStack kills exactly
+# this stack and never an unrelated process that merely shares a keyword.
+$pidFile = Join-Path $repo ".devstack.pids"
+
+function Add-DevStackPid {
+    param([int]$Id)
+    Add-Content -Path $pidFile -Value $Id -ErrorAction SilentlyContinue
+}
+
 function Stop-DevStack {
-    # The uvicorn autoreloader forks a child that is the process actually
-    # holding the socket, and vite runs as node. Match on command line instead
-    # of on port so both halves die together.
+    # Terminate only the processes recorded in the PID file. Matching by
+    # command-line keywords (*uvicorn*, *vite*) could kill unrelated processes
+    # whose command line happened to contain those words. taskkill /T also reaps
+    # the uvicorn autoreloader child and the node process npm spawns.
+    if (-not (Test-Path $pidFile)) {
+        Write-Host "[dev] no recorded dev-stack processes to stop" -ForegroundColor Yellow
+        return
+    }
+    $ids = @(Get-Content $pidFile -ErrorAction SilentlyContinue | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | Select-Object -Unique)
     $killed = 0
-    Get-CimInstance Win32_Process -Filter "Name like 'python%' or Name like 'ragvault%'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and ($_.CommandLine -like '*run_desktop*' -or $_.CommandLine -like '*multiprocessing.spawn*' -or $_.CommandLine -like '*uvicorn*') } |
-        ForEach-Object {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-            $killed++
-        }
-    Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -and $_.CommandLine -like '*vite*' } |
-        ForEach-Object {
-            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-            $killed++
-        }
-    Write-Host "[dev] stopped $killed process(es)" -ForegroundColor Yellow
+    foreach ($id in $ids) {
+        & taskkill.exe /PID $id /T /F 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $killed++ }
+    }
+    Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+    Write-Host "[dev] stopped $killed dev-stack process tree(s)" -ForegroundColor Yellow
 }
 
 if ($Stop) { Stop-DevStack; exit 0 }
@@ -113,6 +124,7 @@ if ($Frozen) {
     }
     $backend = Start-Process -FilePath $python -PassThru -NoNewWindow -WorkingDirectory $repo -ArgumentList $pyArgs
 }
+Add-DevStackPid $backend.Id
 
 # Wait for the API to answer before starting anything else, so the first page
 # load does not flash a proxy error. Lexical analysis of a 321 MB bundle and the
@@ -158,7 +170,11 @@ $frontend = Join-Path $repo "frontend"
 if (-not (Test-Path (Join-Path $frontend "node_modules"))) {
     Write-Host "[dev] installing frontend dependencies (first run only)..." -ForegroundColor Yellow
     Push-Location $frontend
-    & npm.cmd install --registry https://registry.npmmirror.com
+    if ($NpmRegistry) {
+        & npm.cmd install --registry $NpmRegistry
+    } else {
+        & npm.cmd install
+    }
     Pop-Location
 }
 
@@ -185,7 +201,9 @@ Write-Host ""
 
 Push-Location $frontend
 try {
-    & npm.cmd run dev
+    $vite = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "npm run dev") -PassThru -NoNewWindow -WorkingDirectory $frontend
+    Add-DevStackPid $vite.Id
+    Wait-Process -Id $vite.Id
 } finally {
     Pop-Location
     Write-Host ""

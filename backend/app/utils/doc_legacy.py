@@ -372,9 +372,11 @@ def _strip_rtf(data: bytes) -> str:
     text = re.sub(r"\{\\\*?\\(?:fonttbl|colortbl|stylesheet|info|pict)[^{}]*\}", "", text)
     text = re.sub(r"\\'([0-9a-fA-F]{2})", lambda m: chr(int(m.group(1), 16)), text)
     text = re.sub(r"\\u(-?\d+)\??", lambda m: chr(int(m.group(1)) % 65536), text)
+    # Convert breaks BEFORE stripping control words: the generic regex below
+    # also matches \par/\line, so converting afterwards never fires.
+    text = text.replace("\\par", "\n").replace("\\line", "\n")
     text = re.sub(r"\\[a-zA-Z]+-?\d* ?", "", text)
     text = re.sub(r"[{}]", "", text)
-    text = text.replace("\\par", "\n").replace("\\line", "\n")
     return _clean(text)
 
 

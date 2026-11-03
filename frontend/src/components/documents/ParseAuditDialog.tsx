@@ -8,7 +8,6 @@
  * see immediately whether the answer is missing because the page was never read,
  * or because it was read badly.
  */
-import { useMemo } from 'react'
 import { AlertTriangle, CheckCircle2, ScanLine, FileText, FileWarning } from 'lucide-react'
 import {
   Dialog,
@@ -50,7 +49,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 export function ParseAuditDialog({ open, onOpenChange, audit, filename }: ParseAuditDialogProps) {
   const t = useT()
 
-  const notable = useMemo(() => audit?.pages ?? [], [audit])
+  const notable = audit?.pages ?? []
   const unread = audit ? audit.ocr_skipped_pages + audit.ocr_failed_pages : 0
   const confidencePct = audit?.mean_confidence != null ? Math.round(audit.mean_confidence * 100) : null
 

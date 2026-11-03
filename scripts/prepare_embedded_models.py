@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         copied = 0
         for entry in source.iterdir():
-            if entry.name.startswith(("models--", "models")) or entry.is_dir():
+            if entry.name.startswith(("models--", "models")) and entry.is_dir():
                 destination = target / entry.name
                 if destination.exists():
                     shutil.rmtree(destination)

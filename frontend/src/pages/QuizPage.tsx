@@ -1,17 +1,31 @@
 import { motion } from 'framer-motion'
 import { History, Zap } from 'lucide-react'
 import { useChats } from '@/api/chats'
-import { useQuizHistory } from '@/api/quiz'
+import { useQueries } from '@tanstack/react-query'
+import api from '@/api/client'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatDistanceToNow } from 'date-fns'
 import { parseBackendDate } from '@/lib/utils'
 import { useT, useDateLocale } from '@/i18n/useT'
+import type { Quiz } from '@/types'
 
 export function QuizPage() {
   const t = useT()
   const { data: chatsData } = useChats()
   const chats = chatsData?.chats ?? []
+
+  // Fetch every chat's quiz history in one batched observer instead of one
+  // useQuizHistory call per chat (which would fire an N+1 request storm).
+  const quizHistories = useQueries({
+    queries: chats.map((chat) => ({
+      queryKey: ['quiz-history', chat.id] as const,
+      queryFn: async (): Promise<Quiz[]> => {
+        const res = await api.get(`/chats/${chat.id}/quiz-history`)
+        return res.data
+      },
+    })),
+  })
 
   return (
     <div className="h-full flex flex-col p-6 max-w-4xl mx-auto space-y-6">
@@ -27,8 +41,12 @@ export function QuizPage() {
 
       <ScrollArea className="flex-1">
         <div className="space-y-6 pr-2">
-          {chats.map((chat) => (
-            <ChatQuizSection key={chat.id} chatId={chat.id} chatTitle={chat.title} />
+          {chats.map((chat, index) => (
+            <ChatQuizSection
+              key={chat.id}
+              chatTitle={chat.title}
+              quizzes={quizHistories[index]?.data ?? []}
+            />
           ))}
           {chats.length === 0 && (
             <p className="text-xs text-muted-foreground text-center py-12">{t('quizHistory.empty')}</p>
@@ -39,11 +57,9 @@ export function QuizPage() {
   )
 }
 
-function ChatQuizSection({ chatId, chatTitle }: { chatId: string; chatTitle: string }) {
+function ChatQuizSection({ chatTitle, quizzes }: { chatTitle: string; quizzes: Quiz[] }) {
   const t = useT()
   const dateLocale = useDateLocale()
-  const { data } = useQuizHistory(chatId)
-  const quizzes = data ?? []
 
   if (quizzes.length === 0) return null
 
@@ -86,9 +102,9 @@ function ChatQuizSection({ chatId, chatTitle }: { chatId: string; chatTitle: str
                 </p>
                 {quiz.weak_topics && quiz.weak_topics.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {quiz.weak_topics.slice(0, 3).map((t: string, i: number) => (
-                      <Badge key={i} className="text-[10px] bg-orange-500/10 text-orange-400 border-orange-500/20">
-                        {t.length > 30 ? t.slice(0, 30) + '…' : t}
+                    {quiz.weak_topics.slice(0, 3).map((topic: string, i: number) => (
+                      <Badge key={`${topic}-${i}`} className="text-[10px] bg-orange-500/10 text-orange-400 border-orange-500/20">
+                        {topic.length > 30 ? topic.slice(0, 30) + '…' : topic}
                       </Badge>
                     ))}
                   </div>

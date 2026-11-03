@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "RagVault",
-  "version": "2.2.0",
+  "version": "1.0.0",
   "identifier": "com.ragvault.desktop",
   "build": {
     "frontendDist": "../frontend/dist"
@@ -26,7 +26,7 @@
       "../dist/ragvault-backend": "backend"
     },
     "shortDescription": "RAG-powered study companion",
-    "longDescription": "RagVault is a self-hosted, RAG-powered AI study companion. Upload your PDFs and slides, ask questions, generate notes and quizzes.",
+    "longDescription": "RagVault is a self-hosted, RAG-powered AI study companion. Upload PDF (including scans), PowerPoint, Word, Markdown, text or CSV material, then ask questions, generate notes and quizzes, and get a study plan built from the questions you missed.",
     "windows": {
       "nsis": {
         "installMode": "currentUser",

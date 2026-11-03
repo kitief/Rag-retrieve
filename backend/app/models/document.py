@@ -3,7 +3,7 @@ from sqlalchemy import Uuid
 from sqlalchemy.orm import relationship
 from sqlalchemy import CheckConstraint
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database import Base
 
 class Document(Base):
@@ -12,7 +12,7 @@ class Document(Base):
     chat_id = Column(Uuid(as_uuid=True), ForeignKey("chats.id"), nullable=False)
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False)
-    upload_time = Column(DateTime, default=datetime.utcnow)
+    upload_time = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     total_pages = Column(Integer, nullable=True)
     total_chunks = Column(Integer, nullable=True)
     chroma_collection = Column(String, nullable=False)

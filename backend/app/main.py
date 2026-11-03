@@ -22,7 +22,7 @@ from app.routers.notes import router as notes_router
 from app.routers.settings import router as settings_router
 
 # Reported by /health and /config, and shown in the OpenAPI schema.
-API_VERSION = "2.2.0"
+API_VERSION = "1.0.0"
 
 # Written by the Tauri shell when it spawns this process; the guard below stays
 # disabled when it is empty (tests, a bare backend-only dev run).
@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
     import asyncio
     from app.services import llm_client
     logger.info("Cloud LLM: %s", llm_client.describe_llm_setup())
-    asyncio.create_task(llm_client.check_llm_availability())
+    llm_probe_task = asyncio.create_task(llm_client.check_llm_availability())
 
     logger.info(
         "Default language: %s (supported: %s; override per browser via the language switcher)",
@@ -101,6 +101,11 @@ async def lifespan(app: FastAPI):
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     logger.info("Shutting down RagVault API")
+    llm_probe_task.cancel()
+    try:
+        await llm_probe_task
+    except asyncio.CancelledError:
+        pass
 
 
 # ─── App Instance ─────────────────────────────────────────────────────────────

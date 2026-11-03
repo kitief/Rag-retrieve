@@ -49,7 +49,11 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record):  # pragma: no cov
 
 async def get_db():
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def create_tables():

@@ -1,8 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { Query } from '@tanstack/react-query'
 import api from './client'
 import type { Document, DocumentListResponse } from '@/types'
 
-export const useDocuments = (chatId?: string, options?: { refetchInterval?: any }) => {
+export const useDocuments = (
+  chatId?: string,
+  options?: {
+    refetchInterval?:
+      | number
+      | false
+      | ((query: Query<DocumentListResponse>) => number | false | undefined)
+  }
+) => {
   return useQuery({
     queryKey: ['documents', chatId],
     queryFn: async (): Promise<DocumentListResponse> => {
@@ -10,7 +19,7 @@ export const useDocuments = (chatId?: string, options?: { refetchInterval?: any 
       return res.data   // { documents: [...] }
     },
     enabled: !!chatId,
-    refetchInterval: options?.refetchInterval ?? ((query: any) => {
+    refetchInterval: options?.refetchInterval ?? ((query: Query<DocumentListResponse>) => {
       const hasProcessing = query.state.data?.documents?.some(
         (doc: Document) => doc.status === 'processing'
       )

@@ -14,6 +14,7 @@ only: the GET responses only report whether one is configured and a short hint.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -39,6 +40,11 @@ logger = logging.getLogger(__name__)
 _LANGUAGE_KEY = "app_language"
 _SECRET_KEYS = {"llm_api_key"}
 _CONNECTION_KEY = "llm_connection"
+
+# Serialises /settings/llm/test probes: each probe layers unsaved preview
+# values over the runtime overrides and restores them in ``finally``, so a
+# concurrent probe must not interleave that set/restore cycle.
+_test_llm_lock = asyncio.Lock()
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -426,17 +432,18 @@ async def test_llm(
             if value is not None and value.strip():
                 preview[field] = value.strip()
 
-    ok = False
-    try:
-        if preview:
-            # Layer the unsaved values on top of the stored configuration.
-            runtime_settings.set_overrides({**saved, **preview})
-        resolved = llm_client.resolve_llm_config()
-        ok = await llm_client.check_llm_availability()
-    finally:
-        if preview:
-            runtime_settings.clear_overrides()
-            runtime_settings.set_overrides(saved)
+    async with _test_llm_lock:
+        ok = False
+        try:
+            if preview:
+                # Layer the unsaved values on top of the stored configuration.
+                runtime_settings.set_overrides({**saved, **preview})
+            resolved = llm_client.resolve_llm_config()
+            ok = await llm_client.check_llm_availability()
+        finally:
+            if preview:
+                runtime_settings.clear_overrides()
+                runtime_settings.set_overrides(saved)
 
     return SettingsTestResponse(
         ok=ok,
